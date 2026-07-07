@@ -18,4 +18,7 @@ interface TrackerDao {
 
     @Query("SELECT * FROM pontos_gps WHERE sessaoId = :sessaoId ORDER BY timestamp ASC")
     suspend fun buscarPontosDaSessao(sessaoId: Long): List<PontoGps>
+
+    @Query("SELECT * FROM sessoes")
+    suspend fun buscarTodasSessoes(): List<Sessao>
 }

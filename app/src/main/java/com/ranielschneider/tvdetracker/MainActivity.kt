@@ -29,7 +29,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +52,7 @@ class MainActivity : ComponentActivity() {
 fun TrackerScreen() {
     val context = LocalContext.current
     var statusTracking by remember { mutableStateOf(false) }
+    var resultado by remember { mutableStateOf("") }
     var temPermissao by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -104,6 +109,30 @@ fun TrackerScreen() {
                     statusTracking = false
                 }) {
                     Text("⏹ Fim")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    val db = TrackerDatabase.getDatabase(context)
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val dao = db.trackerDao()
+                        val todasSessoes = dao.buscarTodasSessoes()
+                        if (todasSessoes.isEmpty()) {
+                            resultado = "Nenhuma sessão encontrada"
+                        } else {
+                            val ultimaSessao = todasSessoes.last()
+                            val pontos = dao.buscarPontosDaSessao(ultimaSessao.id)
+                            resultado = "Sessão ${ultimaSessao.id}: ${pontos.size} pontos gravados"
+                        }
+                    }
+                }) {
+                    Text("Ver dados")
+                }
+
+                if (resultado.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(resultado)
                 }
             }
         }

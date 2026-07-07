@@ -51,20 +51,7 @@ class TrackerService : Service() {
 
         startForeground(NOTIFICATION_ID, notificacao)
 
-        // 1. Cria uma sessão nova no Room
-        scope.launch {
-            val db = TrackerDatabase.getDatabase(applicationContext)
-            sessaoId = db.trackerDao().inserirSessao(
-                Sessao(horaInicio = System.currentTimeMillis())
-            )
-        }
-
-        // 2. Configura o pedido de localização (a cada 5 segundos)
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY, 5000L
-        ).build()
-
-        // 3. A cada update de GPS, grava o ponto no Room
+        // Callback de GPS — definido antes de ser usado
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
@@ -83,14 +70,31 @@ class TrackerService : Service() {
             }
         }
 
-        fusedClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
+        // Cria a sessão primeiro, só depois pede updates de GPS
+        scope.launch {
+            val db = TrackerDatabase.getDatabase(applicationContext)
+            sessaoId = db.trackerDao().inserirSessao(
+                Sessao(horaInicio = System.currentTimeMillis())
+            )
+
+            val locationRequest = LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY, 2000L
+            )
+                .setMinUpdateIntervalMillis(1000L)
+                .setMinUpdateDistanceMeters(0f)
+                .build()
+
+            fusedClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
+        }
 
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        fusedClient.removeLocationUpdates(locationCallback)
+        if (::locationCallback.isInitialized) {
+            fusedClient.removeLocationUpdates(locationCallback)
+        }
         job.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
