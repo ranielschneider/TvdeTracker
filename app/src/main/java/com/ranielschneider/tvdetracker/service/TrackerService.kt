@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -25,6 +26,7 @@ class TrackerService : Service() {
     companion object {
         const val CHANNEL_ID = "tracker_channel"
         const val NOTIFICATION_ID = 1
+        const val TAG = "TrackerService"
     }
 
     private val job = SupervisorJob()
@@ -37,12 +39,15 @@ class TrackerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate chamado")
         criarCanalDeNotificacao()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand chamado")
+
         val notificacao = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("TVDE Tracker")
             .setContentText("A registar o teu percurso...")
@@ -50,13 +55,17 @@ class TrackerService : Service() {
             .build()
 
         startForeground(NOTIFICATION_ID, notificacao)
+        Log.d(TAG, "startForeground chamado")
 
-        // Callback de GPS — definido antes de ser usado
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
+                Log.d(TAG, "Ponto GPS recebido: lat=${location.latitude}, lng=${location.longitude}")
                 scope.launch {
-                    if (sessaoId == -1L) return@launch
+                    if (sessaoId == -1L) {
+                        Log.w(TAG, "sessaoId ainda -1, ignorando ponto")
+                        return@launch
+                    }
                     val db = TrackerDatabase.getDatabase(applicationContext)
                     db.trackerDao().inserirPontoGps(
                         PontoGps(
@@ -66,16 +75,17 @@ class TrackerService : Service() {
                             sessaoId = sessaoId
                         )
                     )
+                    Log.d(TAG, "Ponto gravado no Room para sessaoId=$sessaoId")
                 }
             }
         }
 
-        // Cria a sessão primeiro, só depois pede updates de GPS
         scope.launch {
             val db = TrackerDatabase.getDatabase(applicationContext)
             sessaoId = db.trackerDao().inserirSessao(
                 Sessao(horaInicio = System.currentTimeMillis())
             )
+            Log.d(TAG, "Sessão criada com id=$sessaoId")
 
             val locationRequest = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY, 2000L
@@ -85,6 +95,7 @@ class TrackerService : Service() {
                 .build()
 
             fusedClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
+            Log.d(TAG, "requestLocationUpdates chamado")
         }
 
         return START_STICKY
@@ -92,6 +103,7 @@ class TrackerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "onDestroy chamado")
         if (::locationCallback.isInitialized) {
             fusedClient.removeLocationUpdates(locationCallback)
         }
@@ -109,5 +121,6 @@ class TrackerService : Service() {
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(canal)
+        Log.d(TAG, "Canal de notificação criado")
     }
 }

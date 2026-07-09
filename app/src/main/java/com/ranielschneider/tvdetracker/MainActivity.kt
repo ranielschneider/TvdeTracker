@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import com.ranielschneider.tvdetracker.ui.MapaScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,7 +43,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    TrackerScreen()
+                    AppScreen()
                 }
             }
         }
@@ -49,9 +51,27 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun TrackerScreen() {
+fun AppScreen() {
+    var mostrarMapa by remember { mutableStateOf(false) }
+    var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
+
+    if (mostrarMapa && ultimaSessaoId != -1L) {
+        MapaScreen(sessaoId = ultimaSessaoId)
+    } else {
+        TrackerScreen(
+            onVerMapa = { sessaoId ->
+                ultimaSessaoId = sessaoId
+                mostrarMapa = true
+            }
+        )
+    }
+}
+
+@Composable
+fun TrackerScreen(onVerMapa: (Long) -> Unit) {
     val context = LocalContext.current
     var statusTracking by remember { mutableStateOf(false) }
+    var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
     var resultado by remember { mutableStateOf("") }
     var temPermissao by remember {
         mutableStateOf(
@@ -107,27 +127,25 @@ fun TrackerScreen() {
                     val intent = Intent(context, TrackerService::class.java)
                     context.stopService(intent)
                     statusTracking = false
+
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val db = TrackerDatabase.getDatabase(context)
+                        val todasSessoes = db.trackerDao().buscarTodasSessoes()
+                        if (todasSessoes.isNotEmpty()) {
+                            ultimaSessaoId = todasSessoes.last().id
+                            resultado = "Sessão ${ultimaSessaoId} terminada"
+                        }
+                    }
                 }) {
                     Text("⏹ Fim")
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Button(onClick = {
-                    val db = TrackerDatabase.getDatabase(context)
-                    CoroutineScope(Dispatchers.Main).launch {
-                        val dao = db.trackerDao()
-                        val todasSessoes = dao.buscarTodasSessoes()
-                        if (todasSessoes.isEmpty()) {
-                            resultado = "Nenhuma sessão encontrada"
-                        } else {
-                            val ultimaSessao = todasSessoes.last()
-                            val pontos = dao.buscarPontosDaSessao(ultimaSessao.id)
-                            resultado = "Sessão ${ultimaSessao.id}: ${pontos.size} pontos gravados"
-                        }
+                if (ultimaSessaoId != -1L) {
+                    Button(onClick = { onVerMapa(ultimaSessaoId) }) {
+                        Text("🗺 Ver Mapa")
                     }
-                }) {
-                    Text("Ver dados")
                 }
 
                 if (resultado.isNotEmpty()) {
