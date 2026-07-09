@@ -72,7 +72,6 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit) {
     val context = LocalContext.current
     var statusTracking by remember { mutableStateOf(false) }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
-    var resultado by remember { mutableStateOf("") }
     var temPermissao by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -119,6 +118,7 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit) {
                     val intent = Intent(context, TrackerService::class.java)
                     context.startForegroundService(intent)
                     statusTracking = true
+                    ultimaSessaoId = -1L
                 }) {
                     Text("▶ Start")
                 }
@@ -133,24 +133,17 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit) {
                         val todasSessoes = db.trackerDao().buscarTodasSessoes()
                         if (todasSessoes.isNotEmpty()) {
                             ultimaSessaoId = todasSessoes.last().id
-                            resultado = "Sessão ${ultimaSessaoId} terminada"
                         }
                     }
                 }) {
                     Text("⏹ Fim")
                 }
+            }
 
+            if (ultimaSessaoId != -1L) {
                 Spacer(modifier = Modifier.height(16.dp))
-
-                if (ultimaSessaoId != -1L) {
-                    Button(onClick = { onVerMapa(ultimaSessaoId) }) {
-                        Text("🗺 Ver Mapa")
-                    }
-                }
-
-                if (resultado.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(resultado)
+                Button(onClick = { onVerMapa(ultimaSessaoId) }) {
+                    Text("🗺 Ver Mapa")
                 }
             }
         }
