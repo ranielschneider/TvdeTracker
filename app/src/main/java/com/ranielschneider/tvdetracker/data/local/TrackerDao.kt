@@ -21,4 +21,8 @@ interface TrackerDao {
 
     @Query("SELECT * FROM sessoes")
     suspend fun buscarTodasSessoes(): List<Sessao>
+
+    @Query("UPDATE sessoes SET horaFim = :horaFim, distanciaTotalMetros = :distancia WHERE id = :sessaoId")
+    suspend fun fecharSessao(sessaoId: Long, horaFim: Long, distancia: Double)
 }
+

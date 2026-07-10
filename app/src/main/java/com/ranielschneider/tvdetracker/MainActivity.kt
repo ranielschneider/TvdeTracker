@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
 import com.ranielschneider.tvdetracker.ui.MapaScreen
@@ -132,7 +133,15 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit) {
                         val db = TrackerDatabase.getDatabase(context)
                         val todasSessoes = db.trackerDao().buscarTodasSessoes()
                         if (todasSessoes.isNotEmpty()) {
-                            ultimaSessaoId = todasSessoes.last().id
+                            val sessao = todasSessoes.last()
+                            val pontos = db.trackerDao().buscarPontosDaSessao(sessao.id)
+                            val distancia = calcularDistanciaTotal(pontos)
+                            db.trackerDao().fecharSessao(
+                                sessaoId = sessao.id,
+                                horaFim = System.currentTimeMillis(),
+                                distancia = distancia * 1000
+                            )
+                            ultimaSessaoId = sessao.id
                         }
                     }
                 }) {
