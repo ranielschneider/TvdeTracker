@@ -7,8 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,17 +34,15 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.ranielschneider.tvdetracker.AzulPrimario
 import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.PontoGps
 import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun MapaScreen(sessaoId: Long) {
+fun MapaScreen(sessaoId: Long, onVoltar: () -> Unit) {
     val context = LocalContext.current
     var pontos by remember { mutableStateOf<List<PontoGps>>(emptyList()) }
     var sessao by remember { mutableStateOf<Sessao?>(null) }
@@ -76,9 +79,24 @@ fun MapaScreen(sessaoId: Long) {
                 Polyline(
                     points = pontos.map { LatLng(it.latitude, it.longitude) },
                     width = 8f,
-                    color = androidx.compose.ui.graphics.Color(0xFF1976D2)
+                    color = Color(0xFF1976D2)
                 )
             }
+        }
+
+        // Botão voltar
+        IconButton(
+            onClick = onVoltar,
+            modifier = Modifier
+                .padding(16.dp)
+                .background(color = AzulPrimario, shape = RoundedCornerShape(50))
+                .align(Alignment.TopStart)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Voltar",
+                tint = Color.White
+            )
         }
 
         // Card de informações em baixo
@@ -88,13 +106,20 @@ fun MapaScreen(sessaoId: Long) {
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .padding(16.dp)
+                    .navigationBarsPadding()
                     .background(
-                        color = Color.White.copy(alpha = 0.95f),
+                        color = Color.White.copy(alpha = 0.97f),
                         shape = RoundedCornerShape(16.dp)
                     )
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Text(
+                    text = formatarData(s.horaInicio),
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Medium
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -102,15 +127,7 @@ fun MapaScreen(sessaoId: Long) {
                     InfoItem(label = "Início", valor = formatarHora(s.horaInicio))
                     InfoItem(label = "Fim", valor = s.horaFim?.let { formatarHora(it) } ?: "--:--")
                     InfoItem(label = "Duração", valor = calcularDuracao(s.horaInicio, s.horaFim))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    InfoItem(
-                        label = "Distância",
-                        valor = "%.2f km".format(kmTotal)
-                    )
+                    InfoItem(label = "Distância", valor = "%.2f km".format(kmTotal))
                 }
             }
         }
@@ -120,14 +137,14 @@ fun MapaScreen(sessaoId: Long) {
 @Composable
 fun InfoItem(label: String, valor: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, fontSize = 12.sp, color = Color.Gray)
-        Text(text = valor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, fontSize = 11.sp, color = Color.Gray)
+        Text(text = valor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 fun formatarHora(timestamp: Long): String {
-    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
+    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
 }
 
 fun calcularDuracao(inicio: Long, fim: Long?): String {

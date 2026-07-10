@@ -48,6 +48,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.maps.compose)
     implementation(libs.play.services.location)
     implementation(libs.room.runtime)
