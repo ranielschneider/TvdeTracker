@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import com.ranielschneider.tvdetracker.ui.HistoricoScreen
 import com.ranielschneider.tvdetracker.ui.MapaScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,23 +54,27 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppScreen() {
-    var mostrarMapa by remember { mutableStateOf(false) }
+    var tela by remember { mutableStateOf("tracker") }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
 
-    if (mostrarMapa && ultimaSessaoId != -1L) {
-        MapaScreen(sessaoId = ultimaSessaoId)
-    } else {
-        TrackerScreen(
+    when (tela) {
+        "mapa" -> MapaScreen(sessaoId = ultimaSessaoId)
+        "historico" -> HistoricoScreen(onVerMapa = { sessaoId ->
+            ultimaSessaoId = sessaoId
+            tela = "mapa"
+        })
+        else -> TrackerScreen(
             onVerMapa = { sessaoId ->
                 ultimaSessaoId = sessaoId
-                mostrarMapa = true
-            }
+                tela = "mapa"
+            },
+            onVerHistorico = { tela = "historico" }
         )
     }
 }
 
 @Composable
-fun TrackerScreen(onVerMapa: (Long) -> Unit) {
+fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
     val context = LocalContext.current
     var statusTracking by remember { mutableStateOf(false) }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
@@ -154,6 +159,11 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit) {
                 Button(onClick = { onVerMapa(ultimaSessaoId) }) {
                     Text("🗺 Ver Mapa")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onVerHistorico) {
+                Text("📋 Histórico")
             }
         }
     }
