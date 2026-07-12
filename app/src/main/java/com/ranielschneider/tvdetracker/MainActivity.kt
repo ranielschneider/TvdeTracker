@@ -1,5 +1,6 @@
 package com.ranielschneider.tvdetracker
 
+import android.content.Context
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,31 +20,45 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import com.ranielschneider.tvdetracker.ui.AppDrawer
 import com.ranielschneider.tvdetracker.ui.HistoricoScreen
 import com.ranielschneider.tvdetracker.ui.MapaScreen
+import com.ranielschneider.tvdetracker.ui.PerfilScreen
+import com.ranielschneider.tvdetracker.ui.ResumoScreen
+import com.ranielschneider.tvdetracker.ui.RotasScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,37 +82,73 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class EstadoTracking { PARADO, A_TRACKING, EM_PAUSA }
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScreen() {
     var tela by remember { mutableStateOf("tracker") }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("tvde_prefs", Context.MODE_PRIVATE)
+    val nome = prefs.getString("nome", "") ?: ""
+    val matricula = prefs.getString("matricula", "") ?: ""
 
-    when (tela) {
-        "mapa" -> MapaScreen(
-            sessaoId = ultimaSessaoId,
-            onVoltar = { tela = "historico" }
-        )
-        "historico" -> HistoricoScreen(
-            onVerMapa = { sessaoId ->
-                ultimaSessaoId = sessaoId
-                tela = "mapa"
-            },
-            onVoltar = { tela = "tracker" }
-        )
-        else -> TrackerScreen(
-            onVerMapa = { sessaoId ->
-                ultimaSessaoId = sessaoId
-                tela = "mapa"
-            },
-            onVerHistorico = { tela = "historico" }
-        )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            AppDrawer(
+                nomeUtilizador = nome,
+                matricula = matricula,
+                onPerfil = { tela = "perfil" },
+                onHistorico = { tela = "historico" },
+                onRotas = { tela = "rotas" },
+                onResumo = { tela = "resumo" },
+                onFechar = { scope.launch { drawerState.close() } }
+            )
+        }
+    ) {
+        when (tela) {
+            "mapa" -> MapaScreen(
+                sessaoId = ultimaSessaoId,
+                onVoltar = { tela = "historico" }
+            )
+            "historico" -> HistoricoScreen(
+                onVerMapa = { sessaoId ->
+                    ultimaSessaoId = sessaoId
+                    tela = "mapa"
+                },
+                onVoltar = { tela = "tracker" }
+            )
+            "perfil" -> PerfilScreen(onVoltar = { tela = "tracker" })
+            "rotas" -> RotasScreen(
+                onVerMapa = { sessaoId ->
+                    ultimaSessaoId = sessaoId
+                    tela = "mapa"
+                },
+                onVoltar = { tela = "tracker" }
+            )
+            "resumo" -> ResumoScreen(onVoltar = { tela = "tracker" })
+            else -> TrackerScreen(
+                onVerMapa = { sessaoId ->
+                    ultimaSessaoId = sessaoId
+                    tela = "mapa"
+                },
+                onVerHistorico = { tela = "historico" },
+                onAbrirMenu = { scope.launch { drawerState.open() } }
+            )
+        }
     }
 }
 
-enum class EstadoTracking { PARADO, A_TRACKING, EM_PAUSA }
-
 @Composable
-fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
+fun TrackerScreen(
+    onVerMapa: (Long) -> Unit,
+    onVerHistorico: () -> Unit,
+    onAbrirMenu: () -> Unit
+) {
     val context = LocalContext.current
     var estado by remember { mutableStateOf(EstadoTracking.PARADO) }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
@@ -123,12 +174,29 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "TVDE Tracker",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = AzulPrimario
-        )
+        // Botão menu no topo
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+
+        ) {
+            Text(
+                text = "TVDE Tracker",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = AzulPrimario
+
+            )
+            IconButton(onClick = onAbrirMenu) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Menu",
+                    tint = AzulPrimario,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -158,9 +226,7 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
                         )
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AzulPrimario)
             ) {
@@ -309,9 +375,7 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = { onVerMapa(ultimaSessaoId) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AzulPrimario)
                 ) {
@@ -323,13 +387,25 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
 
             OutlinedButton(
                 onClick = onVerHistorico,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("📋  Histórico de Percursos", fontSize = 15.sp, color = AzulPrimario)
             }
+        }
+    }
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun TrackerScreenPreview() {
+    MaterialTheme {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            TrackerScreen(
+                onVerMapa = { id -> /* Não faz nada no preview */ },
+                onVerHistorico = { /* Não faz nada no preview */ },
+                onAbrirMenu = { /* Não faz nada no preview */ }
+            )
         }
     }
 }
