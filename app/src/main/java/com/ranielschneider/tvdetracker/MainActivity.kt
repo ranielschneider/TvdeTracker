@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,8 +94,13 @@ fun AppScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("tvde_prefs", Context.MODE_PRIVATE)
-    val nome = prefs.getString("nome", "") ?: ""
-    val matricula = prefs.getString("matricula", "") ?: ""
+    var nome by remember { mutableStateOf(prefs.getString("nome", "") ?: "") }
+    var matricula by remember { mutableStateOf(prefs.getString("matricula", "") ?: "") }
+
+    LaunchedEffect(tela) {
+        nome = prefs.getString("nome", "") ?: ""
+        matricula = prefs.getString("matricula", "") ?: ""
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
