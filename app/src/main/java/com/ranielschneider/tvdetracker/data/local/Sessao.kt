@@ -9,5 +9,6 @@ data class Sessao(
     val id: Long = 0,
     val horaInicio: Long,
     val horaFim: Long? = null,
-    val distanciaTotalMetros: Double = 0.0
+    val distanciaTotalMetros: Double = 0.0,
+    val horasConduzidasMs: Long = 0L
 )

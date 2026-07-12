@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,10 +47,12 @@ import com.ranielschneider.tvdetracker.ui.MapaScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 val VerdeTracking = Color(0xFF2E7D32)
 val VermelhoStop = Color(0xFFC62828)
 val AzulPrimario = Color(0xFF1565C0)
+val AmareloParusa = Color(0xFFF9A825)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,10 +94,12 @@ fun AppScreen() {
     }
 }
 
+enum class EstadoTracking { PARADO, A_TRACKING, EM_PAUSA }
+
 @Composable
 fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
     val context = LocalContext.current
-    var statusTracking by remember { mutableStateOf(false) }
+    var estado by remember { mutableStateOf(EstadoTracking.PARADO) }
     var ultimaSessaoId by remember { mutableLongStateOf(-1L) }
     var temPermissao by remember {
         mutableStateOf(
@@ -128,9 +133,17 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (statusTracking) "🟢 A registar percurso..." else "⚪ Pronto para iniciar",
+            text = when (estado) {
+                EstadoTracking.PARADO -> "⚪ Pronto para iniciar"
+                EstadoTracking.A_TRACKING -> "🟢 A registar percurso..."
+                EstadoTracking.EM_PAUSA -> "🟡 Em pausa"
+            },
             fontSize = 16.sp,
-            color = if (statusTracking) VerdeTracking else Color.Gray
+            color = when (estado) {
+                EstadoTracking.PARADO -> Color.Gray
+                EstadoTracking.A_TRACKING -> VerdeTracking
+                EstadoTracking.EM_PAUSA -> AmareloParusa
+            }
         )
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -154,50 +167,141 @@ fun TrackerScreen(onVerMapa: (Long) -> Unit, onVerHistorico: () -> Unit) {
                 Text("Permitir GPS", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         } else {
-            if (!statusTracking) {
-                Button(
-                    onClick = {
-                        val intent = Intent(context, TrackerService::class.java)
-                        context.startForegroundService(intent)
-                        statusTracking = true
-                        ultimaSessaoId = -1L
-                    },
-                    modifier = Modifier.size(160.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = VerdeTracking)
-                ) {
-                    Text("▶  START", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                Button(
-                    onClick = {
-                        val intent = Intent(context, TrackerService::class.java)
-                        context.stopService(intent)
-                        statusTracking = false
-
-                        CoroutineScope(Dispatchers.IO).launch {
-                            val db = TrackerDatabase.getDatabase(context)
-                            val todasSessoes = db.trackerDao().buscarTodasSessoes()
-                            if (todasSessoes.isNotEmpty()) {
-                                val sessao = todasSessoes.last()
-                                val pontos = db.trackerDao().buscarPontosDaSessao(sessao.id)
-                                val distancia = calcularDistanciaTotal(pontos)
-                                db.trackerDao().fecharSessao(
-                                    sessaoId = sessao.id,
-                                    horaFim = System.currentTimeMillis(),
-                                    distancia = distancia * 1000
-                                )
-                                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                                    ultimaSessaoId = sessao.id
-                                }
+            when (estado) {
+                EstadoTracking.PARADO -> {
+                    Button(
+                        onClick = {
+                            val intent = Intent(context, TrackerService::class.java).apply {
+                                action = TrackerService.ACAO_START
                             }
+                            context.startForegroundService(intent)
+                            estado = EstadoTracking.A_TRACKING
+                            ultimaSessaoId = -1L
+                        },
+                        modifier = Modifier.size(160.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = VerdeTracking)
+                    ) {
+                        Text("▶  START", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                EstadoTracking.A_TRACKING -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Button(
+                            onClick = {
+                                val intent = Intent(context, TrackerService::class.java).apply {
+                                    action = TrackerService.ACAO_PAUSE
+                                }
+                                context.startService(intent)
+                                estado = EstadoTracking.EM_PAUSA
+                            },
+                            modifier = Modifier.size(130.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = AmareloParusa)
+                        ) {
+                            Text("⏸  PAUSA", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                         }
-                    },
-                    modifier = Modifier.size(160.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = VermelhoStop)
-                ) {
-                    Text("⏹  STOP", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+                        Button(
+                            onClick = {
+                                val intent = Intent(context, TrackerService::class.java).apply {
+                                    action = TrackerService.ACAO_STOP
+                                }
+                                context.startService(intent)
+                                estado = EstadoTracking.PARADO
+
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    val db = TrackerDatabase.getDatabase(context)
+                                    val todasSessoes = db.trackerDao().buscarTodasSessoes()
+                                    if (todasSessoes.isNotEmpty()) {
+                                        val sessao = todasSessoes.last()
+                                        val pontos = db.trackerDao().buscarPontosDaSessao(sessao.id)
+                                        val pausas = db.trackerDao().buscarPausasDaSessao(sessao.id)
+                                        val distancia = calcularDistanciaTotal(pontos)
+                                        val horaFim = System.currentTimeMillis()
+                                        val tempoPausaTotal = pausas.sumOf {
+                                            (it.fimPausa ?: horaFim) - it.inicioPausa
+                                        }
+                                        val horasConduzidasMs = (horaFim - sessao.horaInicio) - tempoPausaTotal
+                                        db.trackerDao().fecharSessao(
+                                            sessaoId = sessao.id,
+                                            horaFim = horaFim,
+                                            distancia = distancia * 1000,
+                                            horasConduzidasMs = horasConduzidasMs
+                                        )
+                                        withContext(Dispatchers.Main) {
+                                            ultimaSessaoId = sessao.id
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(130.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = VermelhoStop)
+                        ) {
+                            Text("⏹  STOP", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                EstadoTracking.EM_PAUSA -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Button(
+                            onClick = {
+                                val intent = Intent(context, TrackerService::class.java).apply {
+                                    action = TrackerService.ACAO_RESUME
+                                }
+                                context.startService(intent)
+                                estado = EstadoTracking.A_TRACKING
+                            },
+                            modifier = Modifier.size(130.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = VerdeTracking)
+                        ) {
+                            Text("▶  RESUME", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val intent = Intent(context, TrackerService::class.java).apply {
+                                    action = TrackerService.ACAO_STOP
+                                }
+                                context.startService(intent)
+                                estado = EstadoTracking.PARADO
+
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    val db = TrackerDatabase.getDatabase(context)
+                                    val todasSessoes = db.trackerDao().buscarTodasSessoes()
+                                    if (todasSessoes.isNotEmpty()) {
+                                        val sessao = todasSessoes.last()
+                                        val pontos = db.trackerDao().buscarPontosDaSessao(sessao.id)
+                                        val pausas = db.trackerDao().buscarPausasDaSessao(sessao.id)
+                                        val distancia = calcularDistanciaTotal(pontos)
+                                        val horaFim = System.currentTimeMillis()
+                                        val tempoPausaTotal = pausas.sumOf {
+                                            (it.fimPausa ?: horaFim) - it.inicioPausa
+                                        }
+                                        val horasConduzidasMs = (horaFim - sessao.horaInicio) - tempoPausaTotal
+                                        db.trackerDao().fecharSessao(
+                                            sessaoId = sessao.id,
+                                            horaFim = horaFim,
+                                            distancia = distancia * 1000,
+                                            horasConduzidasMs = horasConduzidasMs
+                                        )
+                                        withContext(Dispatchers.Main) {
+                                            ultimaSessaoId = sessao.id
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(130.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = VermelhoStop)
+                        ) {
+                            Text("⏹  STOP", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 

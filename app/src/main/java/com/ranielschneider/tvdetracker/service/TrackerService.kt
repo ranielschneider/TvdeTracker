@@ -13,6 +13,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.ranielschneider.tvdetracker.data.local.Pausa
 import com.ranielschneider.tvdetracker.data.local.PontoGps
 import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
@@ -27,6 +28,11 @@ class TrackerService : Service() {
         const val CHANNEL_ID = "tracker_channel"
         const val NOTIFICATION_ID = 1
         const val TAG = "TrackerService"
+
+        const val ACAO_START = "START"
+        const val ACAO_PAUSE = "PAUSE"
+        const val ACAO_RESUME = "RESUME"
+        const val ACAO_STOP = "STOP"
     }
 
     private val job = SupervisorJob()
@@ -36,6 +42,8 @@ class TrackerService : Service() {
     private lateinit var locationCallback: LocationCallback
 
     private var sessaoId: Long = -1
+    private var pausaAtualId: Long = -1
+    private var emPausa: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -46,26 +54,29 @@ class TrackerService : Service() {
 
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand chamado")
+        val acao = intent?.action ?: ACAO_START
+        Log.d(TAG, "onStartCommand: acao=$acao")
 
-        val notificacao = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("TVDE Tracker")
-            .setContentText("A registar o teu percurso...")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .build()
+        when (acao) {
+            ACAO_START -> iniciarTracking()
+            ACAO_PAUSE -> pausarTracking()
+            ACAO_RESUME -> retomarTracking()
+            ACAO_STOP -> pararTracking()
+        }
 
-        startForeground(NOTIFICATION_ID, notificacao)
-        Log.d(TAG, "startForeground chamado")
+        return START_STICKY
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun iniciarTracking() {
+        atualizarNotificacao("A registar o teu percurso...")
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
+                if (emPausa) return
                 val location = result.lastLocation ?: return
-                Log.d(TAG, "Ponto GPS recebido: lat=${location.latitude}, lng=${location.longitude}")
                 scope.launch {
-                    if (sessaoId == -1L) {
-                        Log.w(TAG, "sessaoId ainda -1, ignorando ponto")
-                        return@launch
-                    }
+                    if (sessaoId == -1L) return@launch
                     val db = TrackerDatabase.getDatabase(applicationContext)
                     db.trackerDao().inserirPontoGps(
                         PontoGps(
@@ -75,7 +86,6 @@ class TrackerService : Service() {
                             sessaoId = sessaoId
                         )
                     )
-                    Log.d(TAG, "Ponto gravado no Room para sessaoId=$sessaoId")
                 }
             }
         }
@@ -95,10 +105,46 @@ class TrackerService : Service() {
                 .build()
 
             fusedClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
-            Log.d(TAG, "requestLocationUpdates chamado")
         }
+    }
 
-        return START_STICKY
+    private fun pausarTracking() {
+        emPausa = true
+        atualizarNotificacao("Em pausa...")
+        scope.launch {
+            val db = TrackerDatabase.getDatabase(applicationContext)
+            pausaAtualId = db.trackerDao().iniciarPausa(
+                Pausa(
+                    sessaoId = sessaoId,
+                    inicioPausa = System.currentTimeMillis()
+                )
+            )
+            Log.d(TAG, "Pausa iniciada com id=$pausaAtualId")
+        }
+    }
+
+    private fun retomarTracking() {
+        emPausa = false
+        atualizarNotificacao("A registar o teu percurso...")
+        scope.launch {
+            if (pausaAtualId != -1L) {
+                val db = TrackerDatabase.getDatabase(applicationContext)
+                db.trackerDao().terminarPausa(
+                    pausaId = pausaAtualId,
+                    fimPausa = System.currentTimeMillis()
+                )
+                Log.d(TAG, "Pausa $pausaAtualId terminada")
+                pausaAtualId = -1
+            }
+        }
+    }
+
+    private fun pararTracking() {
+        if (::locationCallback.isInitialized) {
+            fusedClient.removeLocationUpdates(locationCallback)
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -108,10 +154,18 @@ class TrackerService : Service() {
             fusedClient.removeLocationUpdates(locationCallback)
         }
         job.cancel()
-        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun atualizarNotificacao(texto: String) {
+        val notificacao = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("TVDE Tracker")
+            .setContentText(texto)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .build()
+        startForeground(NOTIFICATION_ID, notificacao)
+    }
 
     private fun criarCanalDeNotificacao() {
         val canal = NotificationChannel(
@@ -121,6 +175,5 @@ class TrackerService : Service() {
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(canal)
-        Log.d(TAG, "Canal de notificação criado")
     }
 }
