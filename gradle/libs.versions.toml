@@ -30,6 +30,7 @@ room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version = "21.3.0" }
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version = "4.3.3" }
+compose-animation = { group = "androidx.compose.animation", name = "animation", version = "1.7.8" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
