@@ -36,9 +36,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ranielschneider.tvdetracker.AzulPrimario
 import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
+import com.ranielschneider.tvdetracker.ui.theme.AzulPrimario
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

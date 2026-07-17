@@ -7,9 +7,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -35,15 +36,15 @@ fun ParticleBackground(
     color: Color = Color(0xFF1565C0)
 ) {
     val particles = remember {
-        List(40) {
+        List(60) {
             Particle(
                 x = Random.nextFloat(),
                 y = Random.nextFloat(),
-                radius = Random.nextFloat() * 3f + 1.5f,
+                radius = Random.nextFloat() * 3.5f + 1.8f,
                 speed = Random.nextFloat() * 0.3f + 0.1f,
                 angle = Random.nextFloat() * 360f,
-                alpha = Random.nextFloat() * 0.4f + 0.1f,
-                orbitRadius = Random.nextFloat() * 0.08f + 0.02f,
+                alpha = Random.nextFloat() * 0.55f + 0.18f,
+                orbitRadius = Random.nextFloat() * 0.09f + 0.02f,
                 orbitSpeed = Random.nextFloat() * 0.5f + 0.2f
             )
         }
@@ -55,7 +56,7 @@ fun ParticleBackground(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = LinearEasing),
+            animation = tween(11000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "time"
@@ -70,24 +71,22 @@ fun ParticleBackground(
             val cx = (p.x * w) + (p.orbitRadius * w * cos(angle).toFloat())
             val cy = (p.y * h) + (p.orbitRadius * h * sin(angle).toFloat())
 
-            // Partícula com brilho suave
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
                         color.copy(alpha = p.alpha),
-                        color.copy(alpha = p.alpha * 0.3f),
+                        color.copy(alpha = p.alpha * 0.35f),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
-                    radius = p.radius * 4f
+                    radius = p.radius * 4.2f
                 ),
-                radius = p.radius * 4f,
+                radius = p.radius * 4.2f,
                 center = Offset(cx, cy)
             )
 
-            // Núcleo da partícula
             drawCircle(
-                color = color.copy(alpha = p.alpha * 1.5f),
+                color = color.copy(alpha = (p.alpha * 1.6f).coerceAtMost(1f)),
                 radius = p.radius,
                 center = Offset(cx, cy)
             )
@@ -101,6 +100,7 @@ fun PulseAnimation(
     color: Color = Color(0xFF1565C0),
     ativo: Boolean = true
 ) {
+    val emDark = isSystemInDarkTheme()
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
     val wave1 by infiniteTransition.animateFloat(
@@ -134,35 +134,39 @@ fun PulseAnimation(
     )
 
     Canvas(modifier = modifier) {
+        if (!ativo) return@Canvas
+
         val centerX = size.width / 2
         val centerY = size.height / 2
         val maxRadius = size.minDimension / 2
 
-        // Pulso quando ativo
-        if (ativo) {
-            listOf(wave1, wave2, wave3).forEach { progress ->
-                val radius = maxRadius * progress
-                val alpha = (1f - progress) * 0.3f
-                drawCircle(
-                    color = color.copy(alpha = alpha),
-                    radius = radius,
-                    center = Offset(centerX, centerY)
-                )
-            }
+        val alphaOndas = if (emDark) 0.22f else 0.3f
+        listOf(wave1, wave2, wave3).forEach { progress ->
+            val radius = maxRadius * progress
+            val alpha = (1f - progress) * alphaOndas
+            drawCircle(
+                color = color.copy(alpha = alpha),
+                radius = radius,
+                center = Offset(centerX, centerY)
+            )
         }
 
-        // Efeito neon por baixo do botão
+        // Neon por baixo do botão — mais contido e mais espalhado no dark mode
+        val neonAlphaTopo = if (emDark) 0.22f else 0.4f
+        val neonAlphaMeio = if (emDark) 0.09f else 0.15f
+        val neonRaio = if (emDark) maxRadius * 0.95f else maxRadius * 0.65f
+
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    color.copy(alpha = 0.4f),
-                    color.copy(alpha = 0.15f),
+                    color.copy(alpha = neonAlphaTopo),
+                    color.copy(alpha = neonAlphaMeio),
                     Color.Transparent
                 ),
                 center = Offset(centerX, centerY + maxRadius * 0.55f),
-                radius = maxRadius * 0.65f
+                radius = neonRaio
             ),
-            radius = maxRadius * 0.65f,
+            radius = neonRaio,
             center = Offset(centerX, centerY + maxRadius * 0.55f)
         )
     }

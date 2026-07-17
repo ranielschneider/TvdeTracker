@@ -9,7 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +29,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,11 +56,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -68,25 +80,29 @@ import com.ranielschneider.tvdetracker.ui.PerfilScreen
 import com.ranielschneider.tvdetracker.ui.PulseAnimation
 import com.ranielschneider.tvdetracker.ui.ResumoScreen
 import com.ranielschneider.tvdetracker.ui.RotasScreen
+import com.ranielschneider.tvdetracker.ui.TypingText
+import com.ranielschneider.tvdetracker.ui.saudacao
+import com.ranielschneider.tvdetracker.ui.theme.AmareloParusa
+import com.ranielschneider.tvdetracker.ui.theme.AmareloParusaEscuro
+import com.ranielschneider.tvdetracker.ui.theme.AzulPrimario
+import com.ranielschneider.tvdetracker.ui.theme.TvdeTrackerTheme
+import com.ranielschneider.tvdetracker.ui.theme.VerdeTracking
+import com.ranielschneider.tvdetracker.ui.theme.VerdeTrackingEscuro
+import com.ranielschneider.tvdetracker.ui.theme.VermelhoStop
+import com.ranielschneider.tvdetracker.ui.theme.VermelhoStopEscuro
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-val VerdeTracking = Color(0xFF2E7D32)
-val VermelhoStop = Color(0xFFC62828)
-val AzulPrimario = Color(0xFF1565C0)
-val AmareloParusa = Color(0xFFF9A825)
-val FundoApp = Color(0xFFF4F6FA)
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            TvdeTrackerTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = FundoApp
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     AppScreen()
                 }
@@ -120,6 +136,7 @@ fun AppScreen() {
             AppDrawer(
                 nomeUtilizador = nome,
                 matricula = matricula,
+                telaAtual = tela,
                 onPerfil = { tela = "perfil" },
                 onHistorico = { tela = "historico" },
                 onRotas = { tela = "rotas" },
@@ -193,19 +210,16 @@ fun TrackerScreen(
         EstadoTracking.PARADO -> AzulPrimario
     }
 
-    val corBotaoPrincipal = when (estado) {
-        EstadoTracking.PARADO -> VerdeTracking
-        EstadoTracking.A_TRACKING -> AmareloParusa
-        EstadoTracking.EM_PAUSA -> VerdeTracking
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(FundoApp)
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 24.dp)
     ) {
-        // Header
+        val prefs = context.getSharedPreferences("tvde_prefs", Context.MODE_PRIVATE)
+        val nome = prefs.getString("nome", "") ?: ""
+        val textoSaudacao = saudacao(nome)
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -216,10 +230,18 @@ fun TrackerScreen(
             Column {
                 Text(
                     text = "TVDE Tracker",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1A2B4A)
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                 )
+                TypingText(
+                    texto = textoSaudacao,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    velocidade = 55L
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = when (estado) {
                         EstadoTracking.PARADO -> "Pronto para iniciar"
@@ -234,54 +256,27 @@ fun TrackerScreen(
                 Icon(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Menu",
-                    tint = AzulPrimario,
+                    tint = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.size(26.dp)
                 )
             }
         }
 
-        // Área central com pulso + botão
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             contentAlignment = Alignment.Center
         ) {
-            // Partículas de fundo
             ParticleBackground(
                 modifier = Modifier.fillMaxSize(),
                 color = corPulso
             )
 
-            // Pulso + neon
             PulseAnimation(
                 modifier = Modifier.size(280.dp),
                 color = corPulso,
-                ativo = estado != EstadoTracking.PARADO
-            )
-
-            // botões continuam iguais...
-
-            // Animação de pulso
-            PulseAnimation(
-                modifier = Modifier.size(280.dp),
-                color = corPulso,
-                ativo = estado != EstadoTracking.PARADO
-            )
-
-            // Efeito neon
-            Box(
-                modifier = Modifier
-                    .size(160.dp)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                corPulso.copy(alpha = 0.25f),
-                                Color.Transparent
-                            )
-                        ),
-                        shape = CircleShape
-                    )
+                ativo = estado == EstadoTracking.PARADO
             )
 
             when (estado) {
@@ -303,7 +298,7 @@ fun TrackerScreen(
                             Text("Permitir GPS", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Button(
+                        CircularActionButton(
                             onClick = {
                                 val intent = Intent(context, TrackerService::class.java).apply {
                                     action = TrackerService.ACAO_START
@@ -312,20 +307,20 @@ fun TrackerScreen(
                                 estado = EstadoTracking.A_TRACKING
                                 ultimaSessaoId = -1L
                             },
-                            modifier = Modifier
-                                .size(140.dp)
-                                .shadow(12.dp, CircleShape),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = VerdeTracking)
-                        ) {
-                            Text("▶  START", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
+                            icon = Icons.Default.PlayArrow,
+                            label = "START",
+                            gradiente = listOf(Color(0xFF17C989), VerdeTracking, VerdeTrackingEscuro),
+                            corSombra = VerdeTracking,
+                            tamanho = 148.dp,
+                            tamanhoIcone = 30.dp,
+                            tamanhoTexto = 15.sp
+                        )
                     }
                 }
 
                 EstadoTracking.A_TRACKING -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Button(
+                        CircularActionButton(
                             onClick = {
                                 val intent = Intent(context, TrackerService::class.java).apply {
                                     action = TrackerService.ACAO_PAUSE
@@ -333,16 +328,14 @@ fun TrackerScreen(
                                 context.startService(intent)
                                 estado = EstadoTracking.EM_PAUSA
                             },
-                            modifier = Modifier
-                                .size(120.dp)
-                                .shadow(8.dp, CircleShape),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = AmareloParusa)
-                        ) {
-                            Text("⏸\nPAUSA", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                        }
+                            icon = Icons.Default.Pause,
+                            label = "PAUSA",
+                            gradiente = listOf(AmareloParusa, AmareloParusaEscuro),
+                            corSombra = AmareloParusa,
+                            corTexto = Color(0xFF241900)
+                        )
 
-                        Button(
+                        CircularActionButton(
                             onClick = {
                                 val intent = Intent(context, TrackerService::class.java).apply {
                                     action = TrackerService.ACAO_STOP
@@ -377,20 +370,17 @@ fun TrackerScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier
-                                .size(120.dp)
-                                .shadow(8.dp, CircleShape),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = VermelhoStop)
-                        ) {
-                            Text("⏹\nSTOP", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
+                            icon = Icons.Default.Stop,
+                            label = "STOP",
+                            gradiente = listOf(VermelhoStop, VermelhoStopEscuro),
+                            corSombra = VermelhoStop
+                        )
                     }
                 }
 
                 EstadoTracking.EM_PAUSA -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Button(
+                        CircularActionButton(
                             onClick = {
                                 val intent = Intent(context, TrackerService::class.java).apply {
                                     action = TrackerService.ACAO_RESUME
@@ -398,16 +388,13 @@ fun TrackerScreen(
                                 context.startService(intent)
                                 estado = EstadoTracking.A_TRACKING
                             },
-                            modifier = Modifier
-                                .size(120.dp)
-                                .shadow(8.dp, CircleShape),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = VerdeTracking)
-                        ) {
-                            Text("▶\nRESUME", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
+                            icon = Icons.Default.PlayArrow,
+                            label = "RESUME",
+                            gradiente = listOf(VerdeTracking, VerdeTrackingEscuro),
+                            corSombra = VerdeTracking
+                        )
 
-                        Button(
+                        CircularActionButton(
                             onClick = {
                                 val intent = Intent(context, TrackerService::class.java).apply {
                                     action = TrackerService.ACAO_STOP
@@ -442,20 +429,16 @@ fun TrackerScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier
-                                .size(120.dp)
-                                .shadow(8.dp, CircleShape),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = VermelhoStop)
-                        ) {
-                            Text("⏹\nSTOP", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
+                            icon = Icons.Default.Stop,
+                            label = "STOP",
+                            gradiente = listOf(VermelhoStop, VermelhoStopEscuro),
+                            corSombra = VermelhoStop
+                        )
                     }
                 }
             }
         }
 
-        // Cards de resumo da última sessão
         if (ultimaSessaoId != -1L) {
             Row(
                 modifier = Modifier
@@ -466,19 +449,19 @@ fun TrackerScreen(
                 Card(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Conduzido", fontSize = 11.sp, color = Color(0xFF8A9BB0))
+                        Text("Conduzido", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                         Text(
                             text = formatarMs(ultimasHorasMs),
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1A2B4A)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -486,19 +469,19 @@ fun TrackerScreen(
                 Card(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Distância", fontSize = 11.sp, color = Color(0xFF8A9BB0))
+                        Text("Distância", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                         Text(
                             text = "%.1f km".format(ultimaDistanciaKm),
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1A2B4A)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -508,8 +491,7 @@ fun TrackerScreen(
                 onClick = { onVerMapa(ultimaSessaoId) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
-                    .padding(bottom = 0.dp),
+                    .height(50.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AzulPrimario)
             ) {
@@ -519,7 +501,6 @@ fun TrackerScreen(
             Spacer(modifier = Modifier.height(10.dp))
         }
 
-        // Botão histórico
         OutlinedButton(
             onClick = onVerHistorico,
             modifier = Modifier
@@ -531,6 +512,60 @@ fun TrackerScreen(
         }
 
         Spacer(modifier = Modifier.height(28.dp))
+    }
+}
+
+@Composable
+fun CircularActionButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String,
+    gradiente: List<Color>,
+    corSombra: Color,
+    tamanho: Dp = 120.dp,
+    corTexto: Color = Color.White,
+    tamanhoIcone: Dp = 24.dp,
+    tamanhoTexto: TextUnit = 12.sp
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(targetValue = if (isPressed) 0.94f else 1f, label = "actionScale")
+
+    Box(
+        modifier = Modifier
+            .size(tamanho)
+            .scale(scale)
+            .shadow(
+                elevation = 16.dp,
+                shape = CircleShape,
+                ambientColor = corSombra,
+                spotColor = corSombra
+            )
+            .clip(CircleShape)
+            .background(brush = Brush.verticalGradient(colors = gradiente))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = corTexto,
+                modifier = Modifier.size(tamanhoIcone)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                color = corTexto,
+                fontSize = tamanhoTexto,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.8.sp
+            )
+        }
     }
 }
 

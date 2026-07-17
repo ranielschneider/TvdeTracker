@@ -34,7 +34,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
-import com.ranielschneider.tvdetracker.AzulPrimario
+import com.ranielschneider.tvdetracker.ui.theme.AzulPrimario
 import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.PontoGps
 import com.ranielschneider.tvdetracker.data.local.Sessao

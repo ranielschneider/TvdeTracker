@@ -31,7 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ranielschneider.tvdetracker.AzulPrimario
+import com.ranielschneider.tvdetracker.ui.theme.AzulPrimario
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
