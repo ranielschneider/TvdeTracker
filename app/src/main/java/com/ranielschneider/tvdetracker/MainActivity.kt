@@ -9,7 +9,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -214,6 +221,7 @@ fun TrackerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
             .padding(horizontal = 24.dp)
     ) {
         val prefs = context.getSharedPreferences("tvde_prefs", Context.MODE_PRIVATE)
@@ -241,16 +249,20 @@ fun TrackerScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     velocidade = 55L
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = when (estado) {
-                        EstadoTracking.PARADO -> "Pronto para iniciar"
-                        EstadoTracking.A_TRACKING -> "A registar percurso..."
-                        EstadoTracking.EM_PAUSA -> "Em pausa"
-                    },
-                    fontSize = 13.sp,
-                    color = corPulso.copy(alpha = 0.8f)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusLed(color = corPulso)
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        text = when (estado) {
+                            EstadoTracking.PARADO -> "Pronto para iniciar"
+                            EstadoTracking.A_TRACKING -> "A registar percurso..."
+                            EstadoTracking.EM_PAUSA -> "Em pausa"
+                        },
+                        fontSize = 13.sp,
+                        color = corPulso.copy(alpha = 0.9f)
+                    )
+                }
             }
             IconButton(onClick = onAbrirMenu) {
                 Icon(
@@ -567,6 +579,33 @@ fun CircularActionButton(
             )
         }
     }
+}
+
+@Composable
+fun StatusLed(color: Color, modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "led")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ledAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .size(8.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = CircleShape,
+                ambientColor = color,
+                spotColor = color
+            )
+            .clip(CircleShape)
+            .background(color.copy(alpha = alpha))
+    )
 }
 
 fun formatarMs(ms: Long): String {
