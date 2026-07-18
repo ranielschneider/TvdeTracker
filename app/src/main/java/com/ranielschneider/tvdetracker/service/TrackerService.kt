@@ -15,12 +15,14 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.ranielschneider.tvdetracker.data.local.Pausa
 import com.ranielschneider.tvdetracker.data.local.PontoGps
-import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class TrackerService : Service() {
 
@@ -33,138 +35,418 @@ class TrackerService : Service() {
         const val ACAO_PAUSE = "PAUSE"
         const val ACAO_RESUME = "RESUME"
         const val ACAO_STOP = "STOP"
+
+        private const val ACAO_RESTORE = "RESTORE"
     }
 
-    private val job = SupervisorJob()
-    private val scope = CoroutineScope(Dispatchers.IO + job)
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(
+        Dispatchers.IO + serviceJob
+    )
 
-    private lateinit var fusedClient: com.google.android.gms.location.FusedLocationProviderClient
+    /*
+     * Impede que START, PAUSE, RESUME e STOP sejam processados
+     * simultaneamente em threads diferentes.
+     */
+    private val actionMutex = Mutex()
+
+    private lateinit var fusedClient:
+            com.google.android.gms.location.FusedLocationProviderClient
+
     private lateinit var locationCallback: LocationCallback
 
-    private var sessaoId: Long = -1
-    private var pausaAtualId: Long = -1
+    private var sessaoId: Long = -1L
+    private var pausaAtualId: Long = -1L
+
     private var emPausa: Boolean = false
+    private var recebendoLocalizacoes: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
+
         Log.d(TAG, "onCreate chamado")
+
         criarCanalDeNotificacao()
-        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+
+        fusedClient = LocationServices
+            .getFusedLocationProviderClient(this)
+
+        criarLocationCallback()
     }
 
-    @SuppressLint("MissingPermission")
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val acao = intent?.action ?: ACAO_START
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
+        /*
+         * Quando o Android recria um serviço START_STICKY,
+         * o Intent pode chegar nulo.
+         */
+        val acao = intent?.action ?: ACAO_RESTORE
+
         Log.d(TAG, "onStartCommand: acao=$acao")
 
-        when (acao) {
-            ACAO_START -> iniciarTracking()
-            ACAO_PAUSE -> pausarTracking()
-            ACAO_RESUME -> retomarTracking()
-            ACAO_STOP -> pararTracking()
+        serviceScope.launch {
+            actionMutex.withLock {
+                when (acao) {
+                    ACAO_START -> iniciarTracking()
+                    ACAO_PAUSE -> pausarTracking()
+                    ACAO_RESUME -> retomarTracking()
+                    ACAO_STOP -> pararTracking()
+                    ACAO_RESTORE -> restaurarTracking()
+                }
+            }
         }
 
         return START_STICKY
     }
 
-    @SuppressLint("MissingPermission")
-    private fun iniciarTracking() {
-        atualizarNotificacao("A registar o teu percurso...")
-
+    private fun criarLocationCallback() {
         locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                if (emPausa) return
+
+            override fun onLocationResult(
+                result: LocationResult
+            ) {
+                if (emPausa || sessaoId == -1L) {
+                    return
+                }
+
                 val location = result.lastLocation ?: return
-                scope.launch {
-                    if (sessaoId == -1L) return@launch
-                    val db = TrackerDatabase.getDatabase(applicationContext)
-                    db.trackerDao().inserirPontoGps(
-                        PontoGps(
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            timestamp = System.currentTimeMillis(),
-                            sessaoId = sessaoId
+
+                serviceScope.launch {
+                    val sessionIdSnapshot = sessaoId
+
+                    if (sessionIdSnapshot == -1L || emPausa) {
+                        return@launch
+                    }
+
+                    runCatching {
+                        val dao = TrackerDatabase
+                            .getDatabase(applicationContext)
+                            .trackerDao()
+
+                        dao.inserirPontoGps(
+                            PontoGps(
+                                latitude = location.latitude,
+                                longitude = location.longitude,
+                                timestamp = System.currentTimeMillis(),
+                                sessaoId = sessionIdSnapshot
+                            )
                         )
-                    )
+                    }.onFailure { error ->
+                        Log.e(
+                            TAG,
+                            "Erro ao guardar ponto GPS",
+                            error
+                        )
+                    }
                 }
             }
         }
-
-        scope.launch {
-            val db = TrackerDatabase.getDatabase(applicationContext)
-            sessaoId = db.trackerDao().inserirSessao(
-                Sessao(horaInicio = System.currentTimeMillis())
-            )
-            Log.d(TAG, "Sessão criada com id=$sessaoId")
-
-            val locationRequest = LocationRequest.Builder(
-                Priority.PRIORITY_HIGH_ACCURACY, 2000L
-            )
-                .setMinUpdateIntervalMillis(1000L)
-                .setMinUpdateDistanceMeters(0f)
-                .build()
-
-            fusedClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
-        }
     }
 
-    private fun pausarTracking() {
+    @SuppressLint("MissingPermission")
+    private suspend fun iniciarTracking() {
+        val dao = TrackerDatabase
+            .getDatabase(applicationContext)
+            .trackerDao()
+
+        /*
+         * Evita criar uma segunda sessão caso já exista
+         * uma jornada aberta no banco.
+         */
+        val sessaoAtiva = dao
+            .buscarTodasSessoes()
+            .filter { it.horaFim == null }
+            .maxByOrNull { it.horaInicio }
+
+        sessaoId = sessaoAtiva?.id
+            ?: dao.inserirSessao(
+                com.ranielschneider.tvdetracker.data.local.Sessao(
+                    horaInicio = System.currentTimeMillis()
+                )
+            )
+
+        val pausaAtiva = dao.buscarPausaAtiva(sessaoId)
+
+        pausaAtualId = pausaAtiva?.id ?: -1L
+        emPausa = pausaAtiva != null
+
+        Log.d(
+            TAG,
+            "Sessão ativa restaurada/criada: id=$sessaoId"
+        )
+
+        atualizarNotificacao(
+            if (emPausa) {
+                "Em pausa..."
+            } else {
+                "A registar o teu percurso..."
+            }
+        )
+
+        iniciarAtualizacoesDeLocalizacao()
+    }
+
+    private suspend fun pausarTracking() {
+        val dao = TrackerDatabase
+            .getDatabase(applicationContext)
+            .trackerDao()
+
+        recuperarSessaoAtivaSeNecessario()
+
+        if (sessaoId == -1L) {
+            Log.w(
+                TAG,
+                "PAUSE ignorado: não existe sessão ativa"
+            )
+            return
+        }
+
+        val pausaExistente = dao.buscarPausaAtiva(sessaoId)
+
+        if (pausaExistente != null) {
+            pausaAtualId = pausaExistente.id
+            emPausa = true
+
+            atualizarNotificacao("Em pausa...")
+
+            Log.d(
+                TAG,
+                "Sessão já estava em pausa: id=${pausaExistente.id}"
+            )
+
+            return
+        }
+
+        pausaAtualId = dao.iniciarPausa(
+            Pausa(
+                sessaoId = sessaoId,
+                inicioPausa = System.currentTimeMillis()
+            )
+        )
+
         emPausa = true
+
         atualizarNotificacao("Em pausa...")
-        scope.launch {
-            val db = TrackerDatabase.getDatabase(applicationContext)
-            pausaAtualId = db.trackerDao().iniciarPausa(
-                Pausa(
-                    sessaoId = sessaoId,
-                    inicioPausa = System.currentTimeMillis()
-                )
-            )
-            Log.d(TAG, "Pausa iniciada com id=$pausaAtualId")
-        }
+
+        Log.d(
+            TAG,
+            "Pausa iniciada: id=$pausaAtualId, sessaoId=$sessaoId"
+        )
     }
 
-    private fun retomarTracking() {
-        emPausa = false
-        atualizarNotificacao("A registar o teu percurso...")
-        scope.launch {
-            if (pausaAtualId != -1L) {
-                val db = TrackerDatabase.getDatabase(applicationContext)
-                db.trackerDao().terminarPausa(
-                    pausaId = pausaAtualId,
-                    fimPausa = System.currentTimeMillis()
-                )
-                Log.d(TAG, "Pausa $pausaAtualId terminada")
-                pausaAtualId = -1
+    private suspend fun retomarTracking() {
+        val dao = TrackerDatabase
+            .getDatabase(applicationContext)
+            .trackerDao()
+
+        recuperarSessaoAtivaSeNecessario()
+
+        if (sessaoId == -1L) {
+            Log.w(
+                TAG,
+                "RESUME ignorado: não existe sessão ativa"
+            )
+            return
+        }
+
+        val pausaAtiva = when {
+            pausaAtualId != -1L -> {
+                dao.buscarPausaAtiva(sessaoId)
+            }
+
+            else -> {
+                dao.buscarPausaAtiva(sessaoId)
             }
         }
+
+        if (pausaAtiva != null) {
+            dao.terminarPausa(
+                pausaId = pausaAtiva.id,
+                fimPausa = System.currentTimeMillis()
+            )
+
+            Log.d(
+                TAG,
+                "Pausa terminada: id=${pausaAtiva.id}"
+            )
+        }
+
+        pausaAtualId = -1L
+        emPausa = false
+
+        atualizarNotificacao(
+            "A registar o teu percurso..."
+        )
+
+        iniciarAtualizacoesDeLocalizacao()
+    }
+
+    private suspend fun restaurarTracking() {
+        val dao = TrackerDatabase
+            .getDatabase(applicationContext)
+            .trackerDao()
+
+        val sessaoAtiva = dao
+            .buscarTodasSessoes()
+            .filter { it.horaFim == null }
+            .maxByOrNull { it.horaInicio }
+
+        if (sessaoAtiva == null) {
+            Log.d(
+                TAG,
+                "Nenhuma sessão ativa para restaurar"
+            )
+
+            stopSelf()
+            return
+        }
+
+        sessaoId = sessaoAtiva.id
+
+        val pausaAtiva = dao.buscarPausaAtiva(sessaoId)
+
+        pausaAtualId = pausaAtiva?.id ?: -1L
+        emPausa = pausaAtiva != null
+
+        atualizarNotificacao(
+            if (emPausa) {
+                "Em pausa..."
+            } else {
+                "A registar o teu percurso..."
+            }
+        )
+
+        iniciarAtualizacoesDeLocalizacao()
+
+        Log.d(
+            TAG,
+            "Tracking restaurado: sessaoId=$sessaoId, emPausa=$emPausa"
+        )
+    }
+
+    private suspend fun recuperarSessaoAtivaSeNecessario() {
+        if (sessaoId != -1L) {
+            return
+        }
+
+        val dao = TrackerDatabase
+            .getDatabase(applicationContext)
+            .trackerDao()
+
+        val sessaoAtiva = dao
+            .buscarTodasSessoes()
+            .filter { it.horaFim == null }
+            .maxByOrNull { it.horaInicio }
+
+        if (sessaoAtiva != null) {
+            sessaoId = sessaoAtiva.id
+
+            val pausaAtiva = dao.buscarPausaAtiva(
+                sessaoAtiva.id
+            )
+
+            pausaAtualId = pausaAtiva?.id ?: -1L
+            emPausa = pausaAtiva != null
+
+            Log.d(
+                TAG,
+                "Sessão recuperada do banco: id=$sessaoId"
+            )
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun iniciarAtualizacoesDeLocalizacao() {
+        if (recebendoLocalizacoes) {
+            return
+        }
+
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            2_000L
+        )
+            .setMinUpdateIntervalMillis(1_000L)
+            .setMinUpdateDistanceMeters(0f)
+            .build()
+
+        fusedClient.requestLocationUpdates(
+            locationRequest,
+            locationCallback,
+            mainLooper
+        )
+
+        recebendoLocalizacoes = true
+
+        Log.d(
+            TAG,
+            "Atualizações de localização iniciadas"
+        )
     }
 
     private fun pararTracking() {
-        if (::locationCallback.isInitialized) {
-            fusedClient.removeLocationUpdates(locationCallback)
+        if (recebendoLocalizacoes) {
+            fusedClient.removeLocationUpdates(
+                locationCallback
+            )
+
+            recebendoLocalizacoes = false
         }
+
+        emPausa = false
+        pausaAtualId = -1L
+        sessaoId = -1L
+
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+
+        Log.d(TAG, "Tracking parado")
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         Log.d(TAG, "onDestroy chamado")
-        if (::locationCallback.isInitialized) {
-            fusedClient.removeLocationUpdates(locationCallback)
+
+        if (
+            ::locationCallback.isInitialized &&
+            recebendoLocalizacoes
+        ) {
+            fusedClient.removeLocationUpdates(
+                locationCallback
+            )
         }
-        job.cancel()
+
+        recebendoLocalizacoes = false
+
+        serviceScope.cancel()
+
+        super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(
+        intent: Intent?
+    ): IBinder? = null
 
-    private fun atualizarNotificacao(texto: String) {
-        val notificacao = NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun atualizarNotificacao(
+        texto: String
+    ) {
+        val notificacao = NotificationCompat.Builder(
+            this,
+            CHANNEL_ID
+        )
             .setContentTitle("TVDE Tracker")
             .setContentText(texto)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(
+                android.R.drawable.ic_menu_mylocation
+            )
+            .setOngoing(true)
             .build()
-        startForeground(NOTIFICATION_ID, notificacao)
+
+        startForeground(
+            NOTIFICATION_ID,
+            notificacao
+        )
     }
 
     private fun criarCanalDeNotificacao() {
@@ -173,7 +455,11 @@ class TrackerService : Service() {
             "Tracker de Percurso",
             NotificationManager.IMPORTANCE_LOW
         )
-        val manager = getSystemService(NotificationManager::class.java)
+
+        val manager = getSystemService(
+            NotificationManager::class.java
+        )
+
         manager.createNotificationChannel(canal)
     }
 }

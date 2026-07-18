@@ -22,17 +22,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ranielschneider.tvdetracker.ui.EstadoTracking
+import com.ranielschneider.tvdetracker.ui.model.TrackingState
 import com.ranielschneider.tvdetracker.ui.theme.AmareloParusa
 import com.ranielschneider.tvdetracker.ui.theme.VerdeTracking
 import com.ranielschneider.tvdetracker.ui.theme.VermelhoStop
 
 @Composable
 fun MainJourneyButton(
-    estado: EstadoTracking,
+    estado: TrackingState,
     temPermissao: Boolean,
     onPedirPermissao: () -> Unit,
     onIniciar: () -> Unit,
@@ -42,7 +43,7 @@ fun MainJourneyButton(
     modifier: Modifier = Modifier
 ) {
     when (estado) {
-        EstadoTracking.PARADO -> {
+        TrackingState.STOPPED -> {
             StartJourneyButton(
                 temPermissao = temPermissao,
                 onPedirPermissao = onPedirPermissao,
@@ -51,7 +52,7 @@ fun MainJourneyButton(
             )
         }
 
-        EstadoTracking.A_TRACKING -> {
+        TrackingState.TRACKING -> {
             TrackingActions(
                 onPausar = onPausar,
                 onEncerrar = onEncerrar,
@@ -59,7 +60,7 @@ fun MainJourneyButton(
             )
         }
 
-        EstadoTracking.EM_PAUSA -> {
+        TrackingState.PAUSED -> {
             PausedActions(
                 onRetomar = onRetomar,
                 onEncerrar = onEncerrar,
@@ -77,7 +78,11 @@ private fun StartJourneyButton(
     modifier: Modifier = Modifier
 ) {
     Button(
-        onClick = if (temPermissao) onIniciar else onPedirPermissao,
+        onClick = if (temPermissao) {
+            onIniciar
+        } else {
+            onPedirPermissao
+        },
         modifier = modifier
             .fillMaxWidth()
             .height(76.dp),
@@ -85,7 +90,9 @@ private fun StartJourneyButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = VerdeTracking
         ),
-        contentPadding = PaddingValues(horizontal = 24.dp)
+        contentPadding = PaddingValues(
+            horizontal = 24.dp
+        )
     ) {
         Icon(
             imageVector = if (temPermissao) {
@@ -184,7 +191,7 @@ private fun PausedActions(
 @Composable
 private fun JourneyActionButton(
     text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     containerColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier

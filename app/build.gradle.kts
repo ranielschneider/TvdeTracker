@@ -48,6 +48,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.compose.animation)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.maps.compose)

@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ranielschneider.tvdetracker.ui.EstadoTracking
+import com.ranielschneider.tvdetracker.ui.model.TrackingState
 import com.ranielschneider.tvdetracker.ui.saudacao
 import com.ranielschneider.tvdetracker.ui.theme.AmareloParusa
 import com.ranielschneider.tvdetracker.ui.theme.VerdeTracking
@@ -39,15 +39,15 @@ import com.ranielschneider.tvdetracker.ui.theme.VerdeTracking
 @Composable
 fun HomeHeader(
     nome: String,
-    estado: EstadoTracking,
+    estado: TrackingState,
     onAbrirMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val corEstado = when (estado) {
-        EstadoTracking.PARADO,
-        EstadoTracking.A_TRACKING -> VerdeTracking
+        TrackingState.STOPPED,
+        TrackingState.TRACKING -> VerdeTracking
 
-        EstadoTracking.EM_PAUSA -> AmareloParusa
+        TrackingState.PAUSED -> AmareloParusa
     }
 
     Row(
@@ -159,10 +159,12 @@ private fun StatusLed(
     )
 }
 
-private fun textoEstado(estado: EstadoTracking): String {
+private fun textoEstado(
+    estado: TrackingState
+): String {
     return when (estado) {
-        EstadoTracking.PARADO -> "Pronto para iniciar"
-        EstadoTracking.A_TRACKING -> "A registar percurso"
-        EstadoTracking.EM_PAUSA -> "Jornada em pausa"
+        TrackingState.STOPPED -> "Pronto para iniciar"
+        TrackingState.TRACKING -> "A registar percurso"
+        TrackingState.PAUSED -> "Jornada em pausa"
     }
 }
