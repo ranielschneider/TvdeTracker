@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
@@ -34,7 +33,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -80,6 +78,7 @@ import com.ranielschneider.tvdetracker.data.local.PontoGps
 import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import com.ranielschneider.tvdetracker.ui.components.DashboardStatsRow
 import com.ranielschneider.tvdetracker.ui.components.HomeHeader
 import com.ranielschneider.tvdetracker.ui.theme.AmareloParusa
 import com.ranielschneider.tvdetracker.ui.theme.VerdeTracking
@@ -89,6 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import com.ranielschneider.tvdetracker.ui.components.MainJourneyButton
 
 enum class EstadoTracking {
     PARADO,
@@ -298,240 +298,6 @@ fun TrackerScreen(
 
             item {
                 FrequentZoneCard()
-            }
-        }
-    }
-}
-
-@Composable
-private fun DashboardStatsRow(
-    tempoTotalHojeMs: Long,
-    distanciaHojeKm: Double,
-    velocidadeMediaHoje: Double,
-    quantidadeSessoes: Int,
-    carregando: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        DashboardStatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.AccessTime,
-            label = "Tempo",
-            value = if (carregando) "..." else formatDurationHome(tempoTotalHojeMs)
-        )
-
-        DashboardStatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.Route,
-            label = "Distância",
-            value = if (carregando) "..." else "%.1f km".format(distanciaHojeKm)
-        )
-
-        DashboardStatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.DateRange,
-            label = "Sessões",
-            value = if (carregando) "..." else quantidadeSessoes.toString()
-        )
-
-        DashboardStatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.Speed,
-            label = "Média",
-            value = if (carregando) "..." else "%.0f km/h".format(velocidadeMediaHoje)
-        )
-    }
-}
-
-@Composable
-private fun DashboardStatCard(
-    modifier: Modifier,
-    icon: ImageVector,
-    label: String,
-    value: String
-) {
-    Card(
-        modifier = modifier.height(132.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 5.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(VerdeTracking.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = VerdeTracking,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(9.dp))
-
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                maxLines = 1
-            )
-
-            Spacer(modifier = Modifier.height(5.dp))
-
-            Text(
-                text = value,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-private fun MainJourneyButton(
-    estado: EstadoTracking,
-    temPermissao: Boolean,
-    onPedirPermissao: () -> Unit,
-    onIniciar: () -> Unit,
-    onPausar: () -> Unit,
-    onRetomar: () -> Unit,
-    onEncerrar: () -> Unit
-) {
-    when (estado) {
-        EstadoTracking.PARADO -> {
-            Button(
-                onClick = if (temPermissao) onIniciar else onPedirPermissao,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(76.dp),
-                shape = RoundedCornerShape(38.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = VerdeTracking
-                ),
-                contentPadding = PaddingValues(horizontal = 24.dp)
-            ) {
-                Icon(
-                    imageVector = if (temPermissao) {
-                        Icons.Default.PlayArrow
-                    } else {
-                        Icons.Default.Place
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(34.dp)
-                )
-
-                Spacer(modifier = Modifier.size(14.dp))
-
-                Column(horizontalAlignment = Alignment.Start) {
-                    Text(
-                        text = if (temPermissao) {
-                            "INICIAR JORNADA"
-                        } else {
-                            "PERMITIR GPS"
-                        },
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (temPermissao) {
-                            "Comece a registar a sua jornada"
-                        } else {
-                            "Necessário para iniciar o rastreio"
-                        },
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.86f)
-                    )
-                }
-            }
-        }
-
-        EstadoTracking.A_TRACKING -> {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = onPausar,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(62.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AmareloParusa
-                    )
-                ) {
-                    Icon(Icons.Default.Pause, contentDescription = null)
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Text("PAUSAR", fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = onEncerrar,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(62.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = VermelhoStop
-                    )
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = null)
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Text("ENCERRAR", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        EstadoTracking.EM_PAUSA -> {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = onRetomar,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(62.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = VerdeTracking
-                    )
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Text("RETOMAR", fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = onEncerrar,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(62.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = VermelhoStop
-                    )
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = null)
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Text("ENCERRAR", fontWeight = FontWeight.Bold)
-                }
             }
         }
     }
