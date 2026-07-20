@@ -103,15 +103,6 @@ class TrackerViewModel(
                             TrackingState.TRACKING
                     }
 
-                    /*
-                     * Tempo efetivo de condução de cada sessão.
-                     *
-                     * Sessões concluídas:
-                     * usa horasConduzidasMs gravado no banco.
-                     *
-                     * Sessão ativa:
-                     * calcula o tempo decorrido menos todas as pausas.
-                     */
                     val drivingTimeBySessionId =
                         sessions.associate { session ->
                             session.id to calculateSessionDrivingTime(
@@ -152,7 +143,7 @@ class TrackerViewModel(
                         )
 
                     val drivingTimeLast7Days =
-                        buildDrivingTimeLast7Days(
+                        buildCurrentWeekDrivingTime(
                             sessions = sessions,
                             drivingTimeBySessionId =
                                 drivingTimeBySessionId,
@@ -295,32 +286,54 @@ class TrackerViewModel(
                 ).coerceAtLeast(0L)
     }
 
-    private fun buildDrivingTimeLast7Days(
+    private fun buildCurrentWeekDrivingTime(
         sessions: List<Sessao>,
         drivingTimeBySessionId: Map<Long, Long>,
         currentTimeMillis: Long
     ): List<DailyDrivingTime> {
-        val todayCalendar = Calendar
-            .getInstance()
-            .apply {
-                timeInMillis = currentTimeMillis
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
+        val today = Calendar.getInstance().apply {
+            timeInMillis = currentTimeMillis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-        return (6 downTo 0).map { daysAgo ->
+        val monday = today.clone() as Calendar
+
+        val daysSinceMonday = when (
+            monday.get(Calendar.DAY_OF_WEEK)
+        ) {
+            Calendar.SUNDAY -> 6
+            else -> monday.get(Calendar.DAY_OF_WEEK) -
+                    Calendar.MONDAY
+        }
+
+        monday.add(
+            Calendar.DAY_OF_YEAR,
+            -daysSinceMonday
+        )
+
+        val dayLabels = listOf(
+            "Seg",
+            "Ter",
+            "Qua",
+            "Qui",
+            "Sex",
+            "Sáb",
+            "Dom"
+        )
+
+        return dayLabels.mapIndexed { index, dayLabel ->
             val dayCalendar =
-                todayCalendar.clone() as Calendar
+                monday.clone() as Calendar
 
             dayCalendar.add(
                 Calendar.DAY_OF_YEAR,
-                -daysAgo
+                index
             )
 
-            val dayStartMs =
-                dayCalendar.timeInMillis
+            val dayStartMs = dayCalendar.timeInMillis
 
             val dayDrivingTimeMs =
                 sessions
@@ -337,31 +350,14 @@ class TrackerViewModel(
                     }
 
             DailyDrivingTime(
-                dayLabel = getDayLabel(
-                    dayCalendar.get(
-                        Calendar.DAY_OF_WEEK
-                    )
-                ),
+                dayLabel = dayLabel,
                 dateStartMs = dayStartMs,
-                drivingTimeMs =
-                    dayDrivingTimeMs,
-                isToday = daysAgo == 0
+                drivingTimeMs = dayDrivingTimeMs,
+                isToday = isSameDay(
+                    first = dayStartMs,
+                    second = currentTimeMillis
+                )
             )
-        }
-    }
-
-    private fun getDayLabel(
-        dayOfWeek: Int
-    ): String {
-        return when (dayOfWeek) {
-            Calendar.MONDAY -> "Seg"
-            Calendar.TUESDAY -> "Ter"
-            Calendar.WEDNESDAY -> "Qua"
-            Calendar.THURSDAY -> "Qui"
-            Calendar.FRIDAY -> "Sex"
-            Calendar.SATURDAY -> "Sáb"
-            Calendar.SUNDAY -> "Dom"
-            else -> ""
         }
     }
 
