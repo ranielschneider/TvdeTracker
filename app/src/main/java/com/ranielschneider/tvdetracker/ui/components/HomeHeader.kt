@@ -59,31 +59,38 @@ fun HomeHeader(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 14.dp)
+                .padding(
+                    start = 12.dp,
+                    end = 6.dp
+                )
         ) {
             Text(
                 text = saudacao(nome),
-                fontSize = 22.sp,
-                lineHeight = 27.sp,
+                fontSize = 19.sp,
+                lineHeight = 23.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.size(5.dp))
+            Spacer(
+                modifier = Modifier.size(4.dp)
+            )
 
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 StatusLed(color = corEstado)
 
-                Spacer(modifier = Modifier.size(8.dp))
+                Spacer(
+                    modifier = Modifier.size(7.dp)
+                )
 
                 Text(
                     text = textoEstado(estado),
                     color = corEstado,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -91,11 +98,14 @@ fun HomeHeader(
             }
         }
 
-        IconButton(onClick = onAbrirMenu) {
+        IconButton(
+            onClick = onAbrirMenu,
+            modifier = Modifier.size(48.dp)
+        ) {
             Icon(
                 imageVector = Icons.Default.Menu,
                 contentDescription = "Abrir menu",
-                modifier = Modifier.size(30.dp),
+                modifier = Modifier.size(28.dp),
                 tint = MaterialTheme.colorScheme.onBackground
             )
         }
@@ -115,7 +125,7 @@ private fun AvatarUsuario(
 
     Box(
         modifier = modifier
-            .size(58.dp)
+            .size(54.dp)
             .clip(CircleShape)
             .background(VerdeTracking),
         contentAlignment = Alignment.Center
@@ -123,7 +133,7 @@ private fun AvatarUsuario(
         Text(
             text = inicial,
             color = Color.White,
-            fontSize = 24.sp,
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -153,9 +163,11 @@ private fun StatusLed(
 
     Box(
         modifier = modifier
-            .size(9.dp)
+            .size(8.dp)
             .clip(CircleShape)
-            .background(color.copy(alpha = alpha))
+            .background(
+                color.copy(alpha = alpha)
+            )
     )
 }
 

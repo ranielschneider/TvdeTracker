@@ -141,7 +141,9 @@ fun TrackerScreen(
                     Text(
                         text = "Resumo de hoje",
                         fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color =
+                            MaterialTheme.colorScheme.onBackground
                     )
 
                     DashboardStatsRow(
@@ -190,8 +192,7 @@ fun TrackerScreen(
                     pontos =
                         uiState.lastSessionPoints,
                     onOpenMap = {
-                        uiState.lastSession?.let {
-                                session ->
+                        uiState.lastSession?.let { session ->
                             onVerMapa(session.id)
                         }
                     }
@@ -208,7 +209,12 @@ fun TrackerScreen(
             }
 
             item {
-                FrequentZoneCard()
+                FrequentZoneCard(
+                    dailyDrivingTimes =
+                        uiState.drivingTimeLast7Days,
+                    isLoading =
+                        uiState.isLoading
+                )
             }
         }
     }

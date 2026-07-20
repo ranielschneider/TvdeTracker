@@ -5,14 +5,17 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
+import com.ranielschneider.tvdetracker.ui.model.DailyDrivingTime
 import com.ranielschneider.tvdetracker.ui.model.HomeUiState
 import com.ranielschneider.tvdetracker.ui.model.TrackingState
 import com.ranielschneider.tvdetracker.ui.utils.calculateAverageSpeedKmH
 import com.ranielschneider.tvdetracker.ui.utils.calculateTotalTimeMs
 import com.ranielschneider.tvdetracker.ui.utils.finishActiveSession
 import com.ranielschneider.tvdetracker.ui.utils.isSameDay
+import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ class TrackerViewModel(
 ) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
+
     private val trackerDao by lazy {
         TrackerDatabase
             .getDatabase(appContext)
@@ -33,7 +37,9 @@ class TrackerViewModel(
     }
 
     private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    val uiState: StateFlow<HomeUiState> =
+        _uiState.asStateFlow()
 
     init {
         refreshHomeData()
@@ -41,8 +47,8 @@ class TrackerViewModel(
 
     fun refreshHomeData() {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
+            _uiState.update { currentState ->
+                currentState.copy(
                     isLoading = true,
                     errorMessage = null
                 )
@@ -50,30 +56,69 @@ class TrackerViewModel(
 
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val sessions = trackerDao.buscarTodasSessoes()
-                    val lastSession = sessions.maxByOrNull { it.horaInicio }
+                    val sessions = trackerDao
+                        .buscarTodasSessoes()
+                        .sortedBy { session ->
+                            session.horaInicio
+                        }
 
-                    val lastSessionPoints = if (lastSession != null) {
-                        trackerDao.buscarPontosDaSessao(lastSession.id)
-                    } else {
-                        emptyList()
-                    }
+                    val currentTime = System.currentTimeMillis()
+
+                    val lastSession = sessions
+                        .maxByOrNull { session ->
+                            session.horaInicio
+                        }
+
+                    val lastSessionPoints =
+                        if (lastSession != null) {
+                            trackerDao.buscarPontosDaSessao(
+                                lastSession.id
+                            )
+                        } else {
+                            emptyList()
+                        }
 
                     val activeSession = sessions
-                        .filter { it.horaFim == null }
-                        .maxByOrNull { it.horaInicio }
+                        .filter { session ->
+                            session.horaFim == null
+                        }
+                        .maxByOrNull { session ->
+                            session.horaInicio
+                        }
 
                     val activePause = activeSession?.let { session ->
-                        trackerDao.buscarPausaAtiva(session.id)
+                        trackerDao.buscarPausaAtiva(
+                            session.id
+                        )
                     }
 
                     val trackingState = when {
-                        activeSession == null -> TrackingState.STOPPED
-                        activePause != null -> TrackingState.PAUSED
-                        else -> TrackingState.TRACKING
+                        activeSession == null ->
+                            TrackingState.STOPPED
+
+                        activePause != null ->
+                            TrackingState.PAUSED
+
+                        else ->
+                            TrackingState.TRACKING
                     }
 
-                    val currentTime = System.currentTimeMillis()
+                    /*
+                     * Tempo efetivo de condução de cada sessão.
+                     *
+                     * Sessões concluídas:
+                     * usa horasConduzidasMs gravado no banco.
+                     *
+                     * Sessão ativa:
+                     * calcula o tempo decorrido menos todas as pausas.
+                     */
+                    val drivingTimeBySessionId =
+                        sessions.associate { session ->
+                            session.id to calculateSessionDrivingTime(
+                                session = session,
+                                currentTimeMillis = currentTime
+                            )
+                        }
 
                     val todaySessions = sessions.filter { session ->
                         isSameDay(
@@ -82,34 +127,37 @@ class TrackerViewModel(
                         )
                     }
 
-                    val totalTimeTodayMs = calculateTotalTimeMs(
-                        sessions = todaySessions,
-                        currentTimeMillis = currentTime
-                    )
+                    val totalTimeTodayMs =
+                        calculateTotalTimeMs(
+                            sessions = todaySessions,
+                            currentTimeMillis = currentTime
+                        )
 
-                    val drivingTimeTodayMs = todaySessions.sumOf { session ->
-                        if (session.horaFim == null) {
-                            val pauses = trackerDao.buscarPausasDaSessao(session.id)
-
-                            val pauseTimeMs = pauses.sumOf { pause ->
-                                (pause.fimPausa ?: currentTime) - pause.inicioPausa
-                            }
-
-                            ((currentTime - session.horaInicio) - pauseTimeMs)
-                                .coerceAtLeast(0L)
-                        } else {
-                            session.horasConduzidasMs
+                    val drivingTimeTodayMs =
+                        todaySessions.sumOf { session ->
+                            drivingTimeBySessionId[
+                                session.id
+                            ] ?: 0L
                         }
-                    }
 
-                    val distanceTodayKm = todaySessions.sumOf { session ->
-                        session.distanciaTotalMetros
-                    } / 1000.0
+                    val distanceTodayKm =
+                        todaySessions.sumOf { session ->
+                            session.distanciaTotalMetros
+                        } / 1_000.0
 
-                    val averageSpeedTodayKmH = calculateAverageSpeedKmH(
-                        distanceKm = distanceTodayKm,
-                        drivingTimeMs = drivingTimeTodayMs
-                    )
+                    val averageSpeedTodayKmH =
+                        calculateAverageSpeedKmH(
+                            distanceKm = distanceTodayKm,
+                            drivingTimeMs = drivingTimeTodayMs
+                        )
+
+                    val drivingTimeLast7Days =
+                        buildDrivingTimeLast7Days(
+                            sessions = sessions,
+                            drivingTimeBySessionId =
+                                drivingTimeBySessionId,
+                            currentTimeMillis = currentTime
+                        )
 
                     HomeUiState(
                         isLoading = false,
@@ -120,16 +168,20 @@ class TrackerViewModel(
                         totalTimeTodayMs = totalTimeTodayMs,
                         drivingTimeTodayMs = drivingTimeTodayMs,
                         distanceTodayKm = distanceTodayKm,
-                        averageSpeedTodayKmH = averageSpeedTodayKmH,
-                        sessionsTodayCount = todaySessions.size,
+                        averageSpeedTodayKmH =
+                            averageSpeedTodayKmH,
+                        sessionsTodayCount =
+                            todaySessions.size,
+                        drivingTimeLast7Days =
+                            drivingTimeLast7Days,
                         errorMessage = null
                     )
                 }
             }.onSuccess { newState ->
                 _uiState.value = newState
             }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
+                _uiState.update { currentState ->
+                    currentState.copy(
                         isLoading = false,
                         errorMessage = error.message
                             ?: "Não foi possível carregar os dados."
@@ -145,8 +197,8 @@ class TrackerViewModel(
             foreground = true
         )
 
-        _uiState.update {
-            it.copy(
+        _uiState.update { currentState ->
+            currentState.copy(
                 trackingState = TrackingState.TRACKING,
                 errorMessage = null
             )
@@ -158,8 +210,8 @@ class TrackerViewModel(
             action = TrackerService.ACAO_PAUSE
         )
 
-        _uiState.update {
-            it.copy(
+        _uiState.update { currentState ->
+            currentState.copy(
                 trackingState = TrackingState.PAUSED,
                 errorMessage = null
             )
@@ -171,8 +223,8 @@ class TrackerViewModel(
             action = TrackerService.ACAO_RESUME
         )
 
-        _uiState.update {
-            it.copy(
+        _uiState.update { currentState ->
+            currentState.copy(
                 trackingState = TrackingState.TRACKING,
                 errorMessage = null
             )
@@ -184,8 +236,8 @@ class TrackerViewModel(
             action = TrackerService.ACAO_STOP
         )
 
-        _uiState.update {
-            it.copy(
+        _uiState.update { currentState ->
+            currentState.copy(
                 trackingState = TrackingState.STOPPED,
                 errorMessage = null
             )
@@ -197,8 +249,8 @@ class TrackerViewModel(
             }.onSuccess {
                 refreshHomeData()
             }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
+                _uiState.update { currentState ->
+                    currentState.copy(
                         errorMessage = error.message
                             ?: "Não foi possível encerrar a jornada."
                     )
@@ -208,8 +260,108 @@ class TrackerViewModel(
     }
 
     fun clearError() {
-        _uiState.update {
-            it.copy(errorMessage = null)
+        _uiState.update { currentState ->
+            currentState.copy(
+                errorMessage = null
+            )
+        }
+    }
+
+    private suspend fun calculateSessionDrivingTime(
+        session: Sessao,
+        currentTimeMillis: Long
+    ): Long {
+        if (session.horaFim != null) {
+            return session.horasConduzidasMs
+                .coerceAtLeast(0L)
+        }
+
+        val pauses = trackerDao.buscarPausasDaSessao(
+            session.id
+        )
+
+        val totalPauseTimeMs = pauses.sumOf { pause ->
+            val pauseEnd =
+                pause.fimPausa ?: currentTimeMillis
+
+            (pauseEnd - pause.inicioPausa)
+                .coerceAtLeast(0L)
+        }
+
+        return (
+                currentTimeMillis -
+                        session.horaInicio -
+                        totalPauseTimeMs
+                ).coerceAtLeast(0L)
+    }
+
+    private fun buildDrivingTimeLast7Days(
+        sessions: List<Sessao>,
+        drivingTimeBySessionId: Map<Long, Long>,
+        currentTimeMillis: Long
+    ): List<DailyDrivingTime> {
+        val todayCalendar = Calendar
+            .getInstance()
+            .apply {
+                timeInMillis = currentTimeMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+        return (6 downTo 0).map { daysAgo ->
+            val dayCalendar =
+                todayCalendar.clone() as Calendar
+
+            dayCalendar.add(
+                Calendar.DAY_OF_YEAR,
+                -daysAgo
+            )
+
+            val dayStartMs =
+                dayCalendar.timeInMillis
+
+            val dayDrivingTimeMs =
+                sessions
+                    .filter { session ->
+                        isSameDay(
+                            first = session.horaInicio,
+                            second = dayStartMs
+                        )
+                    }
+                    .sumOf { session ->
+                        drivingTimeBySessionId[
+                            session.id
+                        ] ?: 0L
+                    }
+
+            DailyDrivingTime(
+                dayLabel = getDayLabel(
+                    dayCalendar.get(
+                        Calendar.DAY_OF_WEEK
+                    )
+                ),
+                dateStartMs = dayStartMs,
+                drivingTimeMs =
+                    dayDrivingTimeMs,
+                isToday = daysAgo == 0
+            )
+        }
+    }
+
+    private fun getDayLabel(
+        dayOfWeek: Int
+    ): String {
+        return when (dayOfWeek) {
+            Calendar.MONDAY -> "Seg"
+            Calendar.TUESDAY -> "Ter"
+            Calendar.WEDNESDAY -> "Qua"
+            Calendar.THURSDAY -> "Qui"
+            Calendar.FRIDAY -> "Sex"
+            Calendar.SATURDAY -> "Sáb"
+            Calendar.SUNDAY -> "Dom"
+            else -> ""
         }
     }
 
