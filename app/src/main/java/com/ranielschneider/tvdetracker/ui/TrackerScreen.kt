@@ -151,8 +151,8 @@ fun TrackerScreen(
                             uiState.totalTimeTodayMs,
                         distanciaHojeKm =
                             uiState.distanceTodayKm,
-                        velocidadeMediaHoje =
-                            uiState.averageSpeedTodayKmH,
+                        tempoConduzidoHojeMs =
+                            uiState.drivingTimeTodayMs,
                         quantidadeSessoes =
                             uiState.sessionsTodayCount,
                         carregando =
