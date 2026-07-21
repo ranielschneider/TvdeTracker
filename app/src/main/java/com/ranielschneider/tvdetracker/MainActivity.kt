@@ -135,6 +135,9 @@ fun AppScreen() {
 
         drawerState = drawerState,
 
+        gesturesEnabled =
+            destinoAtual != AppDestination.MAPA,
+
         drawerContent = {
 
             AppDrawer(
