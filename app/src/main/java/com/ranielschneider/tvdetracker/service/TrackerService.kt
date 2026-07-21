@@ -37,6 +37,8 @@ class TrackerService : Service() {
         const val ACAO_STOP = "STOP"
 
         private const val ACAO_RESTORE = "RESTORE"
+        private const val VELOCIDADE_MINIMA_PAUSA_KMH = 10f
+        private const val INTERVALO_AVISO_PAUSA = 60_000L
     }
 
     private val serviceJob = SupervisorJob()
@@ -60,6 +62,7 @@ class TrackerService : Service() {
 
     private var emPausa: Boolean = false
     private var recebendoLocalizacoes: Boolean = false
+    private var ultimoAvisoMovimentoPausa = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -108,11 +111,32 @@ class TrackerService : Service() {
             override fun onLocationResult(
                 result: LocationResult
             ) {
-                if (emPausa || sessaoId == -1L) {
+                if (sessaoId == -1L) {
                     return
                 }
 
                 val location = result.lastLocation ?: return
+
+                if (emPausa) {
+
+                    val velocidadeKmH = location.speed * 3.6f
+
+                    val agora = System.currentTimeMillis()
+
+                    if (
+                        velocidadeKmH > VELOCIDADE_MINIMA_PAUSA_KMH &&
+                        agora - ultimoAvisoMovimentoPausa > INTERVALO_AVISO_PAUSA
+                    ) {
+
+                        atualizarNotificacao(
+                            "⚠ Movimento detectado. Jornada em pausa."
+                        )
+
+                        ultimoAvisoMovimentoPausa = agora
+                    }
+
+                    return
+                }
 
                 serviceScope.launch {
                     val sessionIdSnapshot = sessaoId
