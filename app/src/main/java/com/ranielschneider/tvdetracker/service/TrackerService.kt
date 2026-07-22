@@ -455,6 +455,7 @@ class TrackerService : Service() {
     private fun atualizarNotificacao(
         texto: String
     ) {
+
         val notificacao = NotificationCompat.Builder(
             this,
             CHANNEL_ID
@@ -477,7 +478,7 @@ class TrackerService : Service() {
         val canal = NotificationChannel(
             CHANNEL_ID,
             "Tracker de Percurso",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_DEFAULT
         )
 
         val manager = getSystemService(
