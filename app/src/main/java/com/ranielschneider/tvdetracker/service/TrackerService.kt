@@ -3,8 +3,11 @@ package com.ranielschneider.tvdetracker.service
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -13,6 +16,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.ranielschneider.tvdetracker.MainActivity
 import com.ranielschneider.tvdetracker.data.local.Pausa
 import com.ranielschneider.tvdetracker.data.local.PontoGps
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
@@ -27,9 +31,14 @@ import kotlinx.coroutines.sync.withLock
 class TrackerService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "tracker_channel"
+        const val CHANNEL_ID = "tracker_status_channel"
         const val NOTIFICATION_ID = 1
         const val TAG = "TrackerService"
+
+        private const val PAUSE_ALERT_CHANNEL_ID =
+            "tracker_pause_alert_channel"
+
+        private const val PAUSE_ALERT_NOTIFICATION_ID = 2
 
         const val ACAO_START = "START"
         const val ACAO_PAUSE = "PAUSE"
@@ -42,6 +51,7 @@ class TrackerService : Service() {
     }
 
     private val serviceJob = SupervisorJob()
+
     private val serviceScope = CoroutineScope(
         Dispatchers.IO + serviceJob
     )
@@ -69,7 +79,7 @@ class TrackerService : Service() {
 
         Log.d(TAG, "onCreate chamado")
 
-        criarCanalDeNotificacao()
+        criarCanaisDeNotificacao()
 
         fusedClient = LocationServices
             .getFusedLocationProviderClient(this)
@@ -118,20 +128,15 @@ class TrackerService : Service() {
                 val location = result.lastLocation ?: return
 
                 if (emPausa) {
-
                     val velocidadeKmH = location.speed * 3.6f
-
                     val agora = System.currentTimeMillis()
 
                     if (
                         velocidadeKmH > VELOCIDADE_MINIMA_PAUSA_KMH &&
-                        agora - ultimoAvisoMovimentoPausa > INTERVALO_AVISO_PAUSA
+                        agora - ultimoAvisoMovimentoPausa >
+                        INTERVALO_AVISO_PAUSA
                     ) {
-
-                        atualizarNotificacao(
-                            "⚠ Movimento detectado. Jornada em pausa."
-                        )
-
+                        enviarAlertaMovimentoEmPausa()
                         ultimoAvisoMovimentoPausa = agora
                     }
 
@@ -204,9 +209,9 @@ class TrackerService : Service() {
 
         atualizarNotificacao(
             if (emPausa) {
-                "Em pausa..."
+                "Jornada em pausa"
             } else {
-                "A registar o teu percurso..."
+                "A registar o teu percurso"
             }
         )
 
@@ -234,7 +239,7 @@ class TrackerService : Service() {
             pausaAtualId = pausaExistente.id
             emPausa = true
 
-            atualizarNotificacao("Em pausa...")
+            atualizarNotificacao("Jornada em pausa")
 
             Log.d(
                 TAG,
@@ -253,7 +258,7 @@ class TrackerService : Service() {
 
         emPausa = true
 
-        atualizarNotificacao("Em pausa...")
+        atualizarNotificacao("Jornada em pausa")
 
         Log.d(
             TAG,
@@ -276,15 +281,7 @@ class TrackerService : Service() {
             return
         }
 
-        val pausaAtiva = when {
-            pausaAtualId != -1L -> {
-                dao.buscarPausaAtiva(sessaoId)
-            }
-
-            else -> {
-                dao.buscarPausaAtiva(sessaoId)
-            }
-        }
+        val pausaAtiva = dao.buscarPausaAtiva(sessaoId)
 
         if (pausaAtiva != null) {
             dao.terminarPausa(
@@ -300,9 +297,12 @@ class TrackerService : Service() {
 
         pausaAtualId = -1L
         emPausa = false
+        ultimoAvisoMovimentoPausa = 0L
+
+        cancelarAlertaMovimentoEmPausa()
 
         atualizarNotificacao(
-            "A registar o teu percurso..."
+            "A registar o teu percurso"
         )
 
         iniciarAtualizacoesDeLocalizacao()
@@ -337,9 +337,9 @@ class TrackerService : Service() {
 
         atualizarNotificacao(
             if (emPausa) {
-                "Em pausa..."
+                "Jornada em pausa"
             } else {
-                "A registar o teu percurso..."
+                "A registar o teu percurso"
             }
         )
 
@@ -419,9 +419,12 @@ class TrackerService : Service() {
             recebendoLocalizacoes = false
         }
 
+        cancelarAlertaMovimentoEmPausa()
+
         emPausa = false
         pausaAtualId = -1L
         sessaoId = -1L
+        ultimoAvisoMovimentoPausa = 0L
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -455,7 +458,6 @@ class TrackerService : Service() {
     private fun atualizarNotificacao(
         texto: String
     ) {
-
         val notificacao = NotificationCompat.Builder(
             this,
             CHANNEL_ID
@@ -466,6 +468,8 @@ class TrackerService : Service() {
                 android.R.drawable.ic_menu_mylocation
             )
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(criarPendingIntentDoApp())
             .build()
 
         startForeground(
@@ -474,17 +478,126 @@ class TrackerService : Service() {
         )
     }
 
-    private fun criarCanalDeNotificacao() {
-        val canal = NotificationChannel(
-            CHANNEL_ID,
-            "Tracker de Percurso",
-            NotificationManager.IMPORTANCE_DEFAULT
+    private fun enviarAlertaMovimentoEmPausa() {
+        val notificacao = NotificationCompat.Builder(
+            this,
+            PAUSE_ALERT_CHANNEL_ID
         )
+            .setContentTitle("Movimento detetado")
+            .setContentText(
+                "A jornada continua em pausa. Retoma-a para voltar a registar."
+            )
+            .setSmallIcon(
+                android.R.drawable.ic_dialog_alert
+            )
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(criarPendingIntentDoApp())
+            .setTimeoutAfter(15_000L)
+            .build()
 
         val manager = getSystemService(
             NotificationManager::class.java
         )
 
-        manager.createNotificationChannel(canal)
+        manager.notify(
+            PAUSE_ALERT_NOTIFICATION_ID,
+            notificacao
+        )
+
+        Log.d(
+            TAG,
+            "Alerta de movimento em pausa enviado"
+        )
+    }
+
+    private fun cancelarAlertaMovimentoEmPausa() {
+        val manager = getSystemService(
+            NotificationManager::class.java
+        )
+
+        manager.cancel(
+            PAUSE_ALERT_NOTIFICATION_ID
+        )
+    }
+
+    private fun criarPendingIntentDoApp(): PendingIntent {
+        val intent = Intent(
+            this,
+            MainActivity::class.java
+        ).apply {
+            flags =
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun criarCanaisDeNotificacao() {
+        val canalTracking = NotificationChannel(
+            CHANNEL_ID,
+            "Tracker de Percurso",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description =
+                "Mostra o estado da jornada enquanto o percurso é registado."
+
+            setSound(null, null)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+
+        val somNotificacao = RingtoneManager.getDefaultUri(
+            RingtoneManager.TYPE_NOTIFICATION
+        )
+
+        val atributosDeAudio = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            .build()
+
+        val canalAlertaPausa = NotificationChannel(
+            PAUSE_ALERT_CHANNEL_ID,
+            "Alertas durante pausa",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description =
+                "Avisa quando é detetado movimento com a jornada em pausa."
+
+            setSound(
+                somNotificacao,
+                atributosDeAudio
+            )
+
+            enableVibration(true)
+
+            vibrationPattern = longArrayOf(
+                0L,
+                220L,
+                140L,
+                220L
+            )
+
+            setShowBadge(true)
+        }
+
+        val manager = getSystemService(
+            NotificationManager::class.java
+        )
+
+        manager.createNotificationChannels(
+            listOf(
+                canalTracking,
+                canalAlertaPausa
+            )
+        )
     }
 }
