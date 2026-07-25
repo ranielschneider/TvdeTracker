@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Pin de partida -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M7,3
+                          C4.8,3 3,4.8 3,7
+                          C3,10 7,13.5 7,13.5
+                          C7,13.5 11,10 11,7
+                          C11,4.8 9.2,3 7,3 Z" />
+
+    <!-- Centro do pin -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,5.7
+                          A1.3,1.3 0,1 0,7,8.3
+                          A1.3,1.3 0,1 0,7,5.7" />
+
+    <!-- Percurso -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9.5,12
+                          C12,12 12,16 15,16
+                          L18,16" />
+
+    <!-- Destino -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M18,14
+                          L22,14
+                          L22,18
+                          L18,18 Z" />
+
+</vector>

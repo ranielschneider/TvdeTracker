@@ -27,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.ranielschneider.tvdetracker.R
 
 class TrackerService : Service() {
 
@@ -465,7 +466,7 @@ class TrackerService : Service() {
             .setContentTitle("TVDE Tracker")
             .setContentText(texto)
             .setSmallIcon(
-                android.R.drawable.ic_menu_mylocation
+                R.drawable.ic_notification_route
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -488,7 +489,7 @@ class TrackerService : Service() {
                 "A jornada continua em pausa. Retoma-a para voltar a registar."
             )
             .setSmallIcon(
-                android.R.drawable.ic_dialog_alert
+                R.drawable.ic_notification_route
             )
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
