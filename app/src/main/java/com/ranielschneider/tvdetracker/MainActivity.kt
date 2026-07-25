@@ -35,6 +35,7 @@ import com.ranielschneider.tvdetracker.ui.components.HomeBottomNavigation
 import com.ranielschneider.tvdetracker.ui.components.HomeNavigationDestination
 import com.ranielschneider.tvdetracker.ui.theme.TvdeTrackerTheme
 import kotlinx.coroutines.launch
+import com.ranielschneider.tvdetracker.ui.splash.SplashScreen
 
 
 
@@ -52,7 +53,17 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
 
-                    AppScreen()
+                    var showSplash by remember { mutableStateOf(true) }
+
+                    if (showSplash) {
+                        SplashScreen(
+                            onAnimationFinished = {
+                                showSplash = false
+                            }
+                        )
+                    } else {
+                        AppScreen()
+                    }
                 }
             }
         }
