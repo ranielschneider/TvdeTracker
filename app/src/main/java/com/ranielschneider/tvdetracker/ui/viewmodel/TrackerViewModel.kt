@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ranielschneider.tvdetracker.data.calcularDistanciaTotal
 import com.ranielschneider.tvdetracker.data.local.Sessao
 import com.ranielschneider.tvdetracker.data.local.TrackerDatabase
 import com.ranielschneider.tvdetracker.service.TrackerService
@@ -61,7 +62,7 @@ class TrackerViewModel(
 
             while (true) {
 
-                delay(5000)
+                delay(2_000)
 
                 refreshHomeData(
                     showLoading = false
@@ -165,6 +166,35 @@ class TrackerViewModel(
                         }
 
 
+                    val distanceKmBySessionId =
+                        sessions.associate { session ->
+
+                            val distanceKm =
+                                if (session.horaFim != null) {
+
+                                    session.distanciaTotalMetros
+                                        .coerceAtLeast(0.0) / 1000.0
+
+                                } else {
+
+                                    val sessionPoints =
+                                        if (session.id == lastSession?.id) {
+                                            lastSessionPoints
+                                        } else {
+                                            trackerDao.buscarPontosDaSessao(
+                                                session.id
+                                            )
+                                        }
+
+                                    calcularDistanciaTotal(
+                                        sessionPoints
+                                    ).coerceAtLeast(0.0)
+                                }
+
+                            session.id to distanceKm
+                        }
+
+
                     val todaySessions =
                         sessions.filter { session ->
 
@@ -194,9 +224,10 @@ class TrackerViewModel(
                     val distanceTodayKm =
                         todaySessions.sumOf { session ->
 
-                            session.distanciaTotalMetros
-
-                        } / 1000.0
+                            distanceKmBySessionId[
+                                session.id
+                            ] ?: 0.0
+                        }
 
 
                     val averageSpeedTodayKmH =
@@ -286,6 +317,8 @@ class TrackerViewModel(
                 errorMessage = null
             )
         }
+
+        refreshAfterServiceAction()
     }
 
 
@@ -303,6 +336,8 @@ class TrackerViewModel(
                 errorMessage = null
             )
         }
+
+        refreshAfterServiceAction()
     }
 
 
@@ -320,6 +355,8 @@ class TrackerViewModel(
                 errorMessage = null
             )
         }
+
+        refreshAfterServiceAction()
     }
 
 
@@ -363,6 +400,19 @@ class TrackerViewModel(
                     )
                 }
             }
+        }
+    }
+
+
+    private fun refreshAfterServiceAction() {
+
+        viewModelScope.launch {
+
+            delay(500)
+
+            refreshHomeData(
+                showLoading = false
+            )
         }
     }
 
